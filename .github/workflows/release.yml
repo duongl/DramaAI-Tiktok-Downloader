@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install requests cryptography
+
+      - name: Python tests
+        run: python tests/test_module.py
+
+      - name: Rust tests
+        run: cargo test --manifest-path gui/Cargo.toml
+
+      - name: Build GUI
+        run: cargo build --release --manifest-path gui/Cargo.toml
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: gui/target/release/DramaAI-Tiktok-Downloader.exe
+          body: |
+            Bản build Windows của DramaAI Tiktok Downloader.
+
+            Yêu cầu Python 3.8+ và repo để chạy. Xem README để cài đặt.

@@ -1242,7 +1242,7 @@ impl eframe::App for App {
                 ui.heading(egui::RichText::new("DramaAI").color(BRAND_PINK));
                 ui.heading("Tiktok Downloader");
                 ui.label(
-                    egui::RichText::new("Rust GUI • Python core • v1.1.3")
+                    egui::RichText::new("Rust GUI • Python core • v1.1.4")
                         .small()
                         .weak(),
                 );
@@ -1743,7 +1743,7 @@ fn main() -> eframe::Result {
         .with_inner_size([960.0, 680.0])
         .with_min_inner_size([820.0, 560.0])
         .with_resizable(true)
-        .with_title("DramaAI Tiktok Downloader v1.1.3");
+        .with_title("DramaAI Tiktok Downloader v1.1.4");
     if let Some(icon) = load_window_icon() {
         viewport = viewport.with_icon(std::sync::Arc::new(icon));
     }
@@ -1755,7 +1755,7 @@ fn main() -> eframe::Result {
     };
 
     eframe::run_native(
-        "DramaAI Tiktok Downloader v1.1.3",
+        "DramaAI Tiktok Downloader v1.1.4",
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )

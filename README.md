@@ -174,6 +174,25 @@ powershell -ExecutionPolicy Bypass -File create_shortcut.ps1
 
 Hoặc double-click file `Create Desktop Shortcut.bat`.
 
+### Phát hành phiên bản mới (tự động)
+
+```powershell
+# Tăng patch: 1.1.3 -> 1.1.4
+.\release.ps1 -Bump patch
+
+# Hoặc đặt version cụ thể
+.\release.ps1 -Version 1.2.0
+```
+
+Script tự động:
+
+- Cập nhật `VERSION`, `gui/Cargo.toml`, `setup.py` và tiêu đề GUI.
+- Chạy test + build release.
+- Commit `Release vX.Y.Z`, tạo tag và push lên GitHub.
+- GitHub Actions tạo Release và đính kèm file exe.
+
+Tuỳ chọn: `-DryRun`, `-SkipBuild`, `-NoPush`.
+
 Xem chi tiết tại [`gui/README.md`](gui/README.md).
 
 ---
@@ -322,6 +341,9 @@ gui/                     # Rust desktop GUI (egui/eframe)
 run_gui.bat                    # Mở GUI nhanh
 create_shortcut.ps1            # Tạo shortcut trong repo + Desktop
 Create Desktop Shortcut.bat    # Double-click để tạo shortcut
+release.ps1                    # Tự động tăng version, commit, tag, push
+VERSION                        # Version hiện tại
+.github/workflows/release.yml  # GitHub Actions tạo Release + exe
 ```
 
 ---
