@@ -136,6 +136,7 @@ struct App {
     selected: HashSet<u32>,
     ep_filter: String,
     range_input: String,
+    show_filters: bool,
 
     busy: Busy,
     status: String,
@@ -161,7 +162,15 @@ impl App {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         install_fonts(&cc.egui_ctx);
         configure_style(&cc.egui_ctx);
-        Self::base()
+        let mut app = Self::base();
+        if let Ok(start_url) = std::env::var("DRAMA_GUI_START_URL") {
+            let start_url = start_url.trim().to_owned();
+            if !start_url.is_empty() {
+                app.url = start_url;
+                app.start_info(&cc.egui_ctx);
+            }
+        }
+        app
     }
 
     fn base() -> Self {
@@ -194,6 +203,7 @@ impl App {
             selected: HashSet::new(),
             ep_filter: String::new(),
             range_input: String::new(),
+            show_filters: false,
             busy: Busy::Idle,
             status: "Sẵn sàng".to_owned(),
             error: None,
@@ -642,7 +652,6 @@ impl App {
     fn ui_download(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let mut start_info = false;
         let mut start_download = false;
-        let mut cancel_download = false;
         let mut pick_folder = false;
         let mut open_folder = false;
         let mut apply_range = false;
@@ -693,8 +702,12 @@ impl App {
 
         if let Some(series) = &self.series {
             egui::Frame::group(ui.style()).show(ui, |ui| {
+                ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
-                    ui.heading(&series.name);
+                    let title = ui.heading(&series.name);
+                    if !series.description.is_empty() {
+                        title.on_hover_text(&series.description);
+                    }
                     ui.label(
                         egui::RichText::new(series.platform.to_uppercase())
                             .small()
@@ -714,11 +727,6 @@ impl App {
                         ui.hyperlink_to("Ảnh bìa", &series.cover);
                     }
                 });
-                if !series.description.is_empty() {
-                    egui::CollapsingHeader::new("Mô tả").show(ui, |ui| {
-                        ui.label(egui::RichText::new(&series.description).weak());
-                    });
-                }
             });
         }
 
@@ -759,7 +767,7 @@ impl App {
         if let Some(series) = &self.series {
             let max_num = series.episodes.iter().map(|ep| ep.num).max().unwrap_or(0);
 
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label(
                     egui::RichText::new("DANH SÁCH TẬP")
                         .small()
@@ -781,38 +789,66 @@ impl App {
                         .map(|ep| ep.num)
                         .collect();
                 }
+                if ui
+                    .button(if self.show_filters {
+                        "Ẩn bộ lọc"
+                    } else {
+                        "Bộ lọc"
+                    })
+                    .clicked()
+                {
+                    self.show_filters = !self.show_filters;
+                }
                 ui.separator();
                 ui.label(format!("Đã chọn: {}", self.selected.len()));
-            });
-
-            ui.horizontal(|ui| {
-                ui.label("Lọc:");
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.ep_filter)
-                        .hint_text(egui::RichText::new("tên tập hoặc số tập").color(TEXT_FADE))
-                        .desired_width(220.0)
-                        .text_color(TEXT_MAIN),
-                );
-                if ui.button("Xóa lọc").clicked() {
-                    self.ep_filter.clear();
-                }
                 ui.separator();
-                ui.label("Dải tập:");
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.range_input)
-                        .hint_text(egui::RichText::new("1-10,15").color(TEXT_FADE))
-                        .desired_width(130.0)
-                        .text_color(TEXT_MAIN),
-                );
-                if ui.button("Áp dụng").clicked() {
-                    apply_range = true;
+                let selected_count = self.selected.len();
+                let can_download = self.busy == Busy::Idle && selected_count > 0;
+                if ui
+                    .add_enabled(
+                        can_download,
+                        egui::Button::new(format!("Tải {selected_count} tập")).fill(BRAND_BUTTON),
+                    )
+                    .clicked()
+                {
+                    start_download = true;
                 }
-                ui.label(format!("tối đa {max_num}"));
+                if ui.button("Mở thư mục").clicked() {
+                    open_folder = true;
+                }
             });
 
+            if self.show_filters {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Lọc:");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.ep_filter)
+                            .hint_text(egui::RichText::new("tên tập hoặc số tập").color(TEXT_FADE))
+                            .desired_width(220.0)
+                            .text_color(TEXT_MAIN),
+                    );
+                    if ui.button("Xóa lọc").clicked() {
+                        self.ep_filter.clear();
+                    }
+                    ui.separator();
+                    ui.label("Dải tập:");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.range_input)
+                            .hint_text(egui::RichText::new("1-10,15").color(TEXT_FADE))
+                            .desired_width(130.0)
+                            .text_color(TEXT_MAIN),
+                    );
+                    if ui.button("Áp dụng").clicked() {
+                        apply_range = true;
+                    }
+                    ui.label(format!("tối đa {max_num}"));
+                });
+            }
+
+            let list_height = ui.available_height().clamp(260.0, 520.0);
             egui::Frame::group(ui.style()).show(ui, |ui| {
                 egui::ScrollArea::vertical()
-                    .max_height(300.0)
+                    .max_height(list_height)
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         episode_list_ui(
@@ -823,84 +859,6 @@ impl App {
                             &self.ep_filter,
                         );
                     });
-            });
-        }
-
-        if let Some(dl) = &self.dl {
-            egui::Frame::group(ui.style()).show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    let selected_count = self.selected.len();
-                    let can_download =
-                        self.busy == Busy::Idle && selected_count > 0 && self.series.is_some();
-                    if ui
-                        .add_enabled(
-                            can_download,
-                            egui::Button::new(format!("Tải {selected_count} tập đã chọn"))
-                                .fill(BRAND_BUTTON),
-                        )
-                        .clicked()
-                    {
-                        start_download = true;
-                    }
-                    if self.busy == Busy::Download && !dl.finished {
-                        if ui.button("Hủy").clicked() {
-                            cancel_download = true;
-                        }
-                    }
-                    if ui.button("Mở thư mục").clicked() {
-                        open_folder = true;
-                    }
-                    if self.busy == Busy::Download {
-                        ui.spinner();
-                    }
-                });
-
-                let partial: f32 = dl
-                    .ep_progress
-                    .values()
-                    .filter(|progress| **progress < 1.0)
-                    .sum();
-                let fraction = if dl.total > 0 {
-                    ((dl.done + dl.failed) as f32 + partial) / dl.total as f32
-                } else {
-                    0.0
-                };
-                ui.add(
-                    egui::ProgressBar::new(fraction.clamp(0.0, 1.0))
-                        .show_percentage()
-                        .desired_width(f32::INFINITY),
-                );
-                ui.horizontal(|ui| {
-                    ui.label(format!("{}/{} tập hoàn tất", dl.done, dl.total));
-                    if dl.failed > 0 {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(255, 120, 120),
-                            format!("{} lỗi", dl.failed),
-                        );
-                    }
-                    if dl.finished {
-                        ui.colored_label(egui::Color32::from_rgb(120, 220, 150), "Đã kết thúc");
-                    }
-                });
-            });
-        } else if let Some(series) = &self.series {
-            ui.horizontal(|ui| {
-                let selected_count = self.selected.len();
-                let can_download = self.busy == Busy::Idle && selected_count > 0;
-                if ui
-                    .add_enabled(
-                        can_download,
-                        egui::Button::new(format!("Tải {selected_count} tập đã chọn"))
-                            .fill(BRAND_BUTTON),
-                    )
-                    .clicked()
-                {
-                    start_download = true;
-                }
-                if ui.button("Mở thư mục").clicked() {
-                    open_folder = true;
-                }
-                ui.label(format!("{} tập trong series", series.episode_count));
             });
         }
 
@@ -926,9 +884,6 @@ impl App {
         }
         if start_download {
             self.start_download(ctx);
-        }
-        if cancel_download {
-            self.cancel();
         }
         if pick_folder {
             if let Some(dir) = rfd::FileDialog::new()
@@ -1191,7 +1146,7 @@ impl eframe::App for App {
                 ui.heading(egui::RichText::new("DramaAI").color(BRAND_PINK));
                 ui.heading("Tiktok Downloader");
                 ui.label(
-                    egui::RichText::new("Rust GUI • Python core • v1.1.1")
+                    egui::RichText::new("Rust GUI • Python core • v1.1.2")
                         .small()
                         .weak(),
                 );
@@ -1215,6 +1170,7 @@ impl eframe::App for App {
             gradient_bar(ui, 2.0);
         });
 
+        let mut cancel_download = false;
         egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if self.busy != Busy::Idle {
@@ -1224,6 +1180,35 @@ impl eframe::App for App {
                 if let Some(error) = &self.error {
                     ui.separator();
                     ui.colored_label(egui::Color32::from_rgb(255, 120, 120), error);
+                }
+                if let Some(dl) = &self.dl {
+                    let partial: f32 = dl
+                        .ep_progress
+                        .values()
+                        .filter(|progress| **progress < 1.0)
+                        .sum();
+                    let fraction = if dl.total > 0 {
+                        ((dl.done + dl.failed) as f32 + partial) / dl.total as f32
+                    } else {
+                        0.0
+                    };
+                    ui.separator();
+                    ui.add(
+                        egui::ProgressBar::new(fraction.clamp(0.0, 1.0))
+                            .desired_width(150.0)
+                            .show_percentage(),
+                    );
+                    if self.busy == Busy::Download && !dl.finished {
+                        if ui.small_button("Hủy").clicked() {
+                            cancel_download = true;
+                        }
+                    }
+                    if dl.failed > 0 {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(255, 120, 120),
+                            format!("{} lỗi", dl.failed),
+                        );
+                    }
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if let Some(series) = &self.series {
@@ -1240,6 +1225,9 @@ impl eframe::App for App {
                 });
             });
         });
+        if cancel_download {
+            self.cancel();
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| match self.tab {
             Tab::Download => {
@@ -1655,10 +1643,10 @@ fn main() -> eframe::Result {
     }
 
     let mut viewport = egui::ViewportBuilder::default()
-        .with_inner_size([860.0, 580.0])
-        .with_min_inner_size([780.0, 500.0])
+        .with_inner_size([960.0, 680.0])
+        .with_min_inner_size([820.0, 560.0])
         .with_resizable(true)
-        .with_title("DramaAI Tiktok Downloader v1.1.1");
+        .with_title("DramaAI Tiktok Downloader v1.1.2");
     if let Some(icon) = load_window_icon() {
         viewport = viewport.with_icon(std::sync::Arc::new(icon));
     }
@@ -1670,7 +1658,7 @@ fn main() -> eframe::Result {
     };
 
     eframe::run_native(
-        "DramaAI Tiktok Downloader v1.1.1",
+        "DramaAI Tiktok Downloader v1.1.2",
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )
