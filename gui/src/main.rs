@@ -14,8 +14,6 @@ use serde_json::{json, Value};
 
 const BRAND_PINK: egui::Color32 = egui::Color32::from_rgb(255, 45, 111);
 const BRAND_ORANGE: egui::Color32 = egui::Color32::from_rgb(255, 154, 106);
-const BRAND_SOFT: egui::Color32 = egui::Color32::from_rgb(255, 179, 200);
-
 const BRAND_BUTTON: egui::Color32 = egui::Color32::from_rgb(255, 158, 184);
 const BRAND_BUTTON_HOVER: egui::Color32 = egui::Color32::from_rgb(255, 184, 203);
 const BRAND_BUTTON_ACTIVE: egui::Color32 = egui::Color32::from_rgb(255, 136, 168);
@@ -24,8 +22,6 @@ const BUTTON_TEXT: egui::Color32 = egui::Color32::from_rgb(52, 18, 32);
 const TEXT_MAIN: egui::Color32 = egui::Color32::from_rgb(247, 244, 250);
 const TEXT_FADE: egui::Color32 = egui::Color32::from_rgb(214, 208, 220);
 const LINK_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 188, 150);
-
-const VIETQR_URL: &str = "https://img.vietqr.io/image/VCB-1016581189-compact2.png?accountName=LE%20THANH%20THAI%20DUONG&addInfo=DramaAI%20donate";
 
 const PLATFORMS: &[(&str, &str)] = &[
     ("", "Tự động nhận diện"),
@@ -656,7 +652,7 @@ impl App {
                 egui::RichText::new("LIÊN KẾT PHIM")
                     .small()
                     .strong()
-                    .color(BRAND_SOFT),
+                    .color(TEXT_MAIN),
             );
             let url_response = ui.add(
                 egui::TextEdit::singleline(&mut self.url)
@@ -731,7 +727,7 @@ impl App {
                 egui::RichText::new("TUỲ CHỌN TẢI")
                     .small()
                     .strong()
-                    .color(BRAND_SOFT),
+                    .color(TEXT_MAIN),
             );
             ui.horizontal(|ui| {
                 ui.label("Thư mục:");
@@ -768,7 +764,7 @@ impl App {
                     egui::RichText::new("DANH SÁCH TẬP")
                         .small()
                         .strong()
-                        .color(BRAND_SOFT),
+                        .color(TEXT_MAIN),
                 );
                 ui.separator();
                 if ui.button("Chọn tất cả").clicked() {
@@ -978,7 +974,7 @@ impl App {
                 egui::RichText::new("DUYỆT DANH MỤC")
                     .small()
                     .strong()
-                    .color(BRAND_SOFT),
+                    .color(TEXT_MAIN),
             );
             ui.horizontal(|ui| {
                 egui::ComboBox::from_id_salt("catalog_platform")
@@ -1089,8 +1085,8 @@ impl App {
         if self.donate_texture.is_none() {
             self.donate_texture = load_texture(
                 ui.ctx(),
-                "donate-vietqr",
-                include_bytes!("../assets/donate_vietqr.png"),
+                "donate-qr",
+                include_bytes!("../assets/donate_qr_only.png"),
             );
         }
 
@@ -1102,73 +1098,62 @@ impl App {
                     .strong()
                     .color(BRAND_ORANGE),
             );
-            ui.heading("Mời mình một ly cà phê");
-            ui.label(
-                egui::RichText::new(
-                    "Nếu app giúp ích, bạn có thể ủng hộ để mình duy trì và phát triển thêm.",
-                )
-                .weak(),
-            );
         });
-        ui.add_space(8.0);
+        ui.add_space(4.0);
 
-        egui::Frame::group(ui.style()).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                if let Some(texture) = &self.donate_texture {
-                    let source = texture.size_vec2();
-                    let width = 245.0;
-                    let height = if source.x > 0.0 {
-                        width * source.y / source.x
-                    } else {
-                        290.0
-                    };
-                    ui.add(egui::Image::new(egui::load::SizedTexture::new(
-                        texture.id(),
-                        egui::vec2(width, height),
-                    )));
-                } else {
-                    ui.label("Không tải được ảnh QR.");
-                }
-
-                ui.add_space(22.0);
-                ui.vertical(|ui| {
-                    ui.label(
-                        egui::RichText::new("VIETCOMBANK")
-                            .size(20.0)
-                            .strong()
-                            .color(BRAND_PINK),
-                    );
-                    ui.add_space(8.0);
-                    bank_row(ui, "Số tài khoản", "1016581189");
-                    bank_row(ui, "Chủ tài khoản", "LE THANH THAI DUONG");
-                    bank_row(ui, "Nội dung", "DramaAI donate");
-                    ui.add_space(14.0);
-                    if ui
-                        .add(egui::Button::new("Sao chép số tài khoản").fill(BRAND_BUTTON))
-                        .clicked()
-                    {
-                        ui.ctx().copy_text("1016581189".to_owned());
-                        copied = Some("Đã sao chép số tài khoản");
-                    }
-                    if ui.button("Sao chép nội dung").clicked() {
-                        ui.ctx().copy_text("DramaAI donate".to_owned());
-                        copied = Some("Đã sao chép nội dung chuyển khoản");
-                    }
-                });
-            });
-        });
-
-        ui.add_space(6.0);
         ui.vertical_centered(|ui| {
-            ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new(
-                        "Quét mã QR bằng app ngân hàng  •  Cảm ơn bạn đã ủng hộ DramaAI!",
-                    )
-                    .color(BRAND_SOFT),
-                );
-                ui.hyperlink_to("Mở VietQR", VIETQR_URL);
-            });
+            if let Some(texture) = &self.donate_texture {
+                let source = texture.size_vec2();
+                let width = 200.0;
+                let height = if source.x > 0.0 {
+                    width * source.y / source.x
+                } else {
+                    290.0
+                };
+                ui.add(egui::Image::new(egui::load::SizedTexture::new(
+                    texture.id(),
+                    egui::vec2(width, height),
+                )));
+            } else {
+                ui.label("Không tải được ảnh QR.");
+            }
+        });
+
+        ui.add_space(4.0);
+
+        ui.vertical_centered(|ui| {
+            ui.label(
+                egui::RichText::new("VIETCOMBANK")
+                    .size(20.0)
+                    .strong()
+                    .color(BRAND_PINK),
+            );
+            ui.add_space(6.0);
+            ui.spacing_mut().item_spacing.y = 4.0;
+            ui.label(
+                egui::RichText::new("Số tài khoản: 1016581189")
+                    .strong()
+                    .color(TEXT_MAIN),
+            );
+            ui.label(
+                egui::RichText::new("Chủ tài khoản: LE THANH THAI DUONG")
+                    .strong()
+                    .color(TEXT_MAIN),
+            );
+            ui.label(
+                egui::RichText::new("Nội dung: DramaAI donate")
+                    .strong()
+                    .color(TEXT_MAIN),
+            );
+            ui.spacing_mut().item_spacing.y = 8.0;
+            ui.add_space(8.0);
+            if ui
+                .add(egui::Button::new("Sao chép số tài khoản").fill(BRAND_BUTTON))
+                .clicked()
+            {
+                ui.ctx().copy_text("1016581189".to_owned());
+                copied = Some("Đã sao chép số tài khoản");
+            }
         });
 
         if let Some(message) = copied {
@@ -1205,7 +1190,11 @@ impl eframe::App for App {
             ui.horizontal(|ui| {
                 ui.heading(egui::RichText::new("DramaAI").color(BRAND_PINK));
                 ui.heading("Tiktok Downloader");
-                ui.label(egui::RichText::new("Rust GUI • Python core").small().weak());
+                ui.label(
+                    egui::RichText::new("Rust GUI • Python core • v1.1.1")
+                        .small()
+                        .weak(),
+                );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(
                         egui::RichText::new(format!("{} nền tảng", PLATFORMS.len() - 1))
@@ -1370,13 +1359,6 @@ fn tab_button(ui: &mut egui::Ui, selected: bool, label: &str) -> bool {
         .min_size(egui::vec2(0.0, 30.0))
         .rounding(egui::Rounding::same(8.0));
     ui.add(button).clicked()
-}
-
-fn bank_row(ui: &mut egui::Ui, label: &str, value: &str) {
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(format!("{label}:")).small().weak());
-        ui.label(egui::RichText::new(value).strong().color(TEXT_MAIN));
-    });
 }
 
 fn gradient_bar(ui: &mut egui::Ui, height: f32) {
@@ -1647,6 +1629,10 @@ mod tests {
             .expect("VietQR PNG must decode");
         assert!(qr.width() >= 300 && qr.height() >= 300);
 
+        let qr_only = image::load_from_memory(include_bytes!("../assets/donate_qr_only.png"))
+            .expect("QR-only PNG must decode");
+        assert_eq!((qr_only.width(), qr_only.height()), (409, 409));
+
         let icon = image::load_from_memory(include_bytes!("../assets/icon.png"))
             .expect("icon PNG must decode");
         assert_eq!((icon.width(), icon.height()), (256, 256));
@@ -1672,7 +1658,7 @@ fn main() -> eframe::Result {
         .with_inner_size([860.0, 580.0])
         .with_min_inner_size([780.0, 500.0])
         .with_resizable(true)
-        .with_title("DramaAI Tiktok Downloader");
+        .with_title("DramaAI Tiktok Downloader v1.1.1");
     if let Some(icon) = load_window_icon() {
         viewport = viewport.with_icon(std::sync::Arc::new(icon));
     }
@@ -1684,7 +1670,7 @@ fn main() -> eframe::Result {
     };
 
     eframe::run_native(
-        "DramaAI Tiktok Downloader",
+        "DramaAI Tiktok Downloader v1.1.1",
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )
