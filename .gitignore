@@ -37,3 +37,4 @@ share/python-wheels/
 # Temporary outputs
 /downloads/
 *.part
+/settings.json

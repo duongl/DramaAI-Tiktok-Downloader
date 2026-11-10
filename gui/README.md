@@ -50,6 +50,8 @@ run_gui.bat
 - Tab **Donate** với mã VietQR, thông tin Vietcombank và nút sao chép nhanh.
 - Tab **Nhật ký** ghi lại từng bước và lỗi.
 - Giao diện tông hồng–cam lấy cảm hứng từ DramaBox, cửa sổ tự căn giữa khi mở.
+- Tự động lưu thư mục tải, số luồng, tuỳ chọn VTT, nền tảng và URL gần nhất vào:
+  `%APPDATA%\DramaAI Tiktok Downloader\settings.json`.
 - Icon riêng và shortcut Desktop (`create_shortcut.ps1`).
 
 ## Kiến trúc

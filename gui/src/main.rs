@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use eframe::egui;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 const BRAND_PINK: egui::Color32 = egui::Color32::from_rgb(255, 45, 111);
@@ -113,6 +113,56 @@ struct CatalogItem {
     platform: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+struct Settings {
+    output_dir: String,
+    concurrency: u32,
+    save_vtt: bool,
+    platform: String,
+    last_url: String,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            output_dir: "downloads".to_owned(),
+            concurrency: 3,
+            save_vtt: false,
+            platform: String::new(),
+            last_url: String::new(),
+        }
+    }
+}
+
+fn settings_path() -> PathBuf {
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        PathBuf::from(appdata)
+            .join("DramaAI Tiktok Downloader")
+            .join("settings.json")
+    } else {
+        project_root().join("settings.json")
+    }
+}
+
+fn load_settings() -> Settings {
+    let path = settings_path();
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+fn save_settings_to_disk(settings: &Settings) {
+    let path = settings_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(text) = serde_json::to_string_pretty(settings) {
+        let _ = std::fs::write(path, text);
+    }
+}
+
 #[derive(Default)]
 struct DownloadState {
     total: usize,
@@ -191,13 +241,28 @@ impl App {
             _ => Tab::Download,
         };
 
+        let settings = load_settings();
+        let output_dir = if settings.output_dir.trim().is_empty() {
+            "downloads".to_owned()
+        } else {
+            settings.output_dir
+        };
+        let concurrency = if (1..=8).contains(&settings.concurrency) {
+            settings.concurrency
+        } else {
+            3
+        };
+        if output_dir != "downloads" {
+            log.push_back(format!("{} Thư mục tải đã lưu: {}", now_hms(), output_dir));
+        }
+
         Self {
             tab,
-            url: String::new(),
-            platform: String::new(),
-            output_dir: "downloads".to_owned(),
-            concurrency: 3,
-            save_vtt: false,
+            url: settings.last_url,
+            platform: settings.platform,
+            output_dir,
+            concurrency,
+            save_vtt: settings.save_vtt,
             series: None,
             loaded_target: String::new(),
             selected: HashSet::new(),
@@ -229,6 +294,16 @@ impl App {
         }
     }
 
+    fn save_settings(&self) {
+        save_settings_to_disk(&Settings {
+            output_dir: self.output_dir.clone(),
+            concurrency: self.concurrency,
+            save_vtt: self.save_vtt,
+            platform: self.platform.clone(),
+            last_url: self.url.clone(),
+        });
+    }
+
     fn platform_hint(&self) -> Value {
         if self.platform.is_empty() {
             Value::Null
@@ -246,6 +321,7 @@ impl App {
             self.error = Some("Chưa nhập link phim hoặc Series ID.".to_owned());
             return;
         }
+        self.save_settings();
 
         self.error = None;
         self.series = None;
@@ -289,6 +365,7 @@ impl App {
         } else {
             self.output_dir.trim().to_owned()
         };
+        self.save_settings();
 
         self.error = None;
         self.dl = Some(DownloadState {
@@ -655,6 +732,7 @@ impl App {
         let mut pick_folder = false;
         let mut open_folder = false;
         let mut apply_range = false;
+        let mut settings_dirty = false;
 
         egui::Frame::group(ui.style()).show(ui, |ui| {
             ui.label(
@@ -677,6 +755,7 @@ impl App {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.label("Nền tảng:");
+                let platform_before = self.platform.clone();
                 egui::ComboBox::from_id_salt("platform_combo")
                     .width(220.0)
                     .selected_text(platform_label(&self.platform))
@@ -685,6 +764,9 @@ impl App {
                             ui.selectable_value(&mut self.platform, (*id).to_owned(), *name);
                         }
                     });
+                if self.platform != platform_before {
+                    settings_dirty = true;
+                }
                 if ui
                     .add_enabled(
                         self.busy == Busy::Idle,
@@ -738,14 +820,18 @@ impl App {
                     .color(TEXT_MAIN),
             );
             ui.horizontal(|ui| {
-                ui.label("Thư mục:");
+                ui.label("Thư mục:")
+                    .on_hover_text("Đường dẫn được lưu tự động cho lần mở sau");
                 let width = (ui.available_width() - 190.0).max(140.0);
-                ui.add(
+                let output_response = ui.add(
                     egui::TextEdit::singleline(&mut self.output_dir)
                         .desired_width(width)
                         .hint_text(egui::RichText::new("./downloads").color(TEXT_FADE))
                         .text_color(TEXT_MAIN),
                 );
+                if output_response.changed() {
+                    settings_dirty = true;
+                }
                 if ui.button("Chọn...").clicked() {
                     pick_folder = true;
                 }
@@ -755,12 +841,18 @@ impl App {
             });
             ui.horizontal(|ui| {
                 ui.label("Luồng:");
-                ui.add(egui::Slider::new(&mut self.concurrency, 1..=8));
+                let concurrency_response = ui.add(egui::Slider::new(&mut self.concurrency, 1..=8));
+                if concurrency_response.changed() {
+                    settings_dirty = true;
+                }
                 ui.separator();
-                ui.checkbox(
+                let vtt_response = ui.checkbox(
                     &mut self.save_vtt,
                     egui::RichText::new("Lưu file .vtt gốc").color(TEXT_MAIN),
                 );
+                if vtt_response.changed() {
+                    settings_dirty = true;
+                }
             });
         });
 
@@ -891,6 +983,7 @@ impl App {
                 .pick_folder()
             {
                 self.output_dir = dir.display().to_string();
+                settings_dirty = true;
                 self.push_log(format!("Thư mục tải: {}", self.output_dir));
             }
         }
@@ -918,6 +1011,9 @@ impl App {
                     }
                 }
             }
+        }
+        if settings_dirty {
+            self.save_settings();
         }
     }
 
@@ -1146,7 +1242,7 @@ impl eframe::App for App {
                 ui.heading(egui::RichText::new("DramaAI").color(BRAND_PINK));
                 ui.heading("Tiktok Downloader");
                 ui.label(
-                    egui::RichText::new("Rust GUI • Python core • v1.1.2")
+                    egui::RichText::new("Rust GUI • Python core • v1.1.3")
                         .small()
                         .weak(),
                 );
@@ -1252,6 +1348,7 @@ impl eframe::App for App {
 
 impl Drop for App {
     fn drop(&mut self) {
+        self.save_settings();
         if let Some(mut child) = self.child.take() {
             let _ = child.kill();
             let _ = child.wait();
@@ -1646,7 +1743,7 @@ fn main() -> eframe::Result {
         .with_inner_size([960.0, 680.0])
         .with_min_inner_size([820.0, 560.0])
         .with_resizable(true)
-        .with_title("DramaAI Tiktok Downloader v1.1.2");
+        .with_title("DramaAI Tiktok Downloader v1.1.3");
     if let Some(icon) = load_window_icon() {
         viewport = viewport.with_icon(std::sync::Arc::new(icon));
     }
@@ -1658,7 +1755,7 @@ fn main() -> eframe::Result {
     };
 
     eframe::run_native(
-        "DramaAI Tiktok Downloader v1.1.2",
+        "DramaAI Tiktok Downloader v1.1.3",
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )

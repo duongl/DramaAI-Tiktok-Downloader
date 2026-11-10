@@ -152,6 +152,7 @@ Bản GUI native viết bằng Rust (egui/eframe) cho Windows, dùng lõi Python
 - Tải song song, thanh tiến trình từng tập, hủy giữa chừng.
 - Duyệt danh mục, xem nhật ký và tab **Donate** với mã VietQR.
 - Giao diện hồng–cam, cửa sổ tự căn giữa, icon riêng và shortcut Desktop.
+- Tự lưu thư mục tải, số luồng, tuỳ chọn VTT và URL gần nhất cho lần mở sau.
 
 Chạy:
 
