@@ -1,0 +1,39 @@
+# Rust GUI build artifacts
+/gui/target/
+
+# Windows shortcut files
+/*.lnk
+
+# Python virtual environment & build
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+/env/
+/venv/
+/ENV/
+/build/
+/dist/
+/develop-eggs/
+/eggs/
+/.eggs/
+/parts/
+/sdist/
+/var/
+/wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Temporary outputs
+/downloads/
+*.part

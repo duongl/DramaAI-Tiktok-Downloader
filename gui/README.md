@@ -1,0 +1,154 @@
+# DramaAI Tiktok Downloader — Rust GUI
+
+![Giao diện DramaAI Tiktok Downloader](screenshot.png)
+
+![Tab Donate với VietQR](screenshot_donate.png)
+
+Giao diện desktop native viết bằng **Rust + egui/eframe**. Phần giao diện và quản lý tiến trình nằm trong Rust; phần bóc tách dữ liệu, giải mã và tải file dùng lại lõi Python hiện có thông qua một bridge JSON nhỏ.
+
+Cách này giữ nguyên toàn bộ logic 11 nền tảng, đồng thời không cần viết lại thuật toán RSA/Spade hay API của từng nền tảng.
+
+## Chạy nhanh
+
+Từ thư mục gốc repo:
+
+```bat
+run_gui.bat
+```
+
+Hoặc chạy trực tiếp:
+
+```bat
+gui\target\release\DramaAI-Tiktok-Downloader.exe
+```
+
+Yêu cầu:
+
+- Python 3.8+ trên `PATH` và đã cài package (`pip install -e .`).
+- File `drama_downloader/bridge.py` nằm trong repo.
+- Không cần Rust nếu chỉ chạy bản đã build.
+
+Nếu Python không nằm trên `PATH`, đặt biến môi trường `DRAMA_PYTHON`:
+
+```bat
+set DRAMA_PYTHON=C:\Python312\python.exe
+run_gui.bat
+```
+
+## Tính năng
+
+- Dán link hoặc Series ID, tự nhận diện nền tảng (hoặc chọn thủ công).
+- Xem tên phim, nền tảng, số tập, mô tả, ảnh bìa.
+- Danh sách tập có trạng thái `FREE` / `KHÓA` / `NO STREAM` / số phụ đề.
+- Chọn tất cả, bỏ chọn, chỉ chọn tập có stream, lọc theo tên/số tập.
+- Nhập dải tập kiểu `1-10,15,20`.
+- Tải song song nhiều tập, chọn số luồng 1–8.
+- Thanh tiến trình tổng và tiến trình từng tập.
+- Hủy giữa chừng (file `.part` có thể còn lại).
+- Chọn thư mục tải bằng hộp thoại Windows, mở thư mục sau khi tải.
+- Tab **Danh mục** để duyệt phim (DramaBox và ShortMax).
+- Tab **Donate** với mã VietQR, thông tin Vietcombank và nút sao chép nhanh.
+- Tab **Nhật ký** ghi lại từng bước và lỗi.
+- Giao diện tông hồng–cam lấy cảm hứng từ DramaBox, cửa sổ tự căn giữa khi mở.
+- Icon riêng và shortcut Desktop (`create_shortcut.ps1`).
+
+## Kiến trúc
+
+```text
+┌─────────────────────────────┐
+│  Rust GUI (eframe/egui)     │
+│  - nhập URL, chọn tập       │
+│  - tiến trình, log, hủy     │
+└──────────────┬──────────────┘
+               │ JSON qua stdin/stdout
+               │ (mỗi dòng là một event)
+┌──────────────▼──────────────┐
+│  drama_downloader/bridge.py │
+│  - load_series()            │
+│  - DramaDownloader          │
+│  - get_catalog()            │
+└──────────────┬──────────────┘
+               │
+┌──────────────▼──────────────┐
+│  Lõi Python hiện có         │
+│  11 platform + crypto       │
+└─────────────────────────────┘
+```
+
+Bridge nhận một request JSON từ stdin và ghi các event JSON ra stdout:
+
+```json
+{"cmd": "info", "target": "https://...", "platform": null}
+{"event": "series", "series": {"name": "...", "episodes": [...]}}
+```
+
+Các event tải:
+
+```json
+{"event": "episode_start", "num": 1, "title": "..."}
+{"event": "progress", "num": 1, "percent": 42.5, "downloaded": 123, "total": 456, "speed": 789}
+{"event": "episode_done", "num": 1, "path": "..."}
+{"event": "episode_error", "num": 1, "message": "..."}
+{"event": "finished", "ok": 10, "failed": 0, "elapsed": 12.3}
+```
+
+## Build từ source
+
+Yêu cầu Rust với toolchain GNU trên Windows:
+
+```powershell
+# Cài rustup (một lần)
+# Tải rustup-init.exe cho x86_64-pc-windows-gnu từ static.rust-lang.org
+rustup-init.exe -y --profile minimal --default-host x86_64-pc-windows-gnu
+
+# Build GUI
+powershell -ExecutionPolicy Bypass -File gui\build.ps1
+```
+
+Script sẽ tự tải binutils tối thiểu từ MSYS2, tạo shim `dlltool` (do Rust windows-gnu truyền `--temp-prefix` có dấu `:` không hợp lệ trên Windows), rồi build release.
+
+Tạo shortcut ngoài Desktop (có icon riêng):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File create_shortcut.ps1
+```
+
+Hoặc double-click `Create Desktop Shortcut.bat` ở thư mục gốc repo.
+
+Nếu bạn dùng toolchain MSVC + Visual Studio Build Tools, chỉ cần:
+
+```powershell
+cd gui
+cargo build --release
+```
+
+## Smoke test không mở cửa sổ
+
+Dùng để kiểm tra nhanh Rust → Python → dữ liệu series:
+
+```powershell
+$env:DRAMA_GUI_SMOKE = "https://www.dramaboxdb.com/movie/42000032672/drama"
+gui\target\debug\DramaAI-Tiktok-Downloader.exe
+# SMOKE_OK platform=dramabox episodes=70 selected=70
+```
+
+Chỉ bản debug in được kết quả ra console; bản release dùng Windows subsystem.
+
+## Giới hạn hiện tại
+
+- Cần Python và repo Python đi kèm; GUI chưa đóng gói thành một file exe độc lập.
+- Tên app là thương hiệu **DramaAI Tiktok Downloader**; lõi hiện hỗ trợ 11 nền tảng phim ngắn OTT, chưa có extractor riêng cho video TikTok.
+- Chưa xử lý HLS/m3u8: nếu API trả playlist `.m3u8`, file tải về sẽ là playlist chứ không phải video hoàn chỉnh.
+- `catalog` chỉ có dữ liệu đầy đủ ở DramaBox và ShortMax.
+- Hủy tải sẽ dừng tiến trình Python ngay, có thể để lại file `.part`.
+- Phụ đề chỉ được bóc tách ở NetShort và FreeReels (giới hạn của lõi Python hiện tại).
+- Việc tải nội dung có bản quyền là trách nhiệm của người dùng; xem disclaimer ở README gốc.
+
+## Xử lý sự cố
+
+| Lỗi | Cách xử lý |
+|---|---|
+| `Không chạy được Python` | Cài Python 3.8+, thêm vào PATH, hoặc đặt `DRAMA_PYTHON`. |
+| `Không tìm thấy bridge Python` | Chạy exe từ trong repo, hoặc đặt `DRAMA_ROOT` trỏ tới thư mục gốc. |
+| Chữ Trung/Nhật bị ô vuông | Cài font Microsoft YaHei (`C:\Windows\Fonts\msyh.ttc`). |
+| Build lỗi `dlltool` | Chạy `gui\build.ps1` để tạo shim, hoặc dùng toolchain MSVC. |
