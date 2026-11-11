@@ -81,6 +81,7 @@ enum Tab {
     Download,
     Catalog,
     Dubbing,
+    Merge,
     Donate,
     Log,
 }
@@ -91,6 +92,7 @@ impl Tab {
             Tab::Download => "Tải phim",
             Tab::Catalog => "Danh mục",
             Tab::Dubbing => "Lồng tiếng",
+            Tab::Merge => "Ghép tập",
             Tab::Donate => "Donate",
             Tab::Log => "Nhật ký",
         }
@@ -104,6 +106,7 @@ enum Busy {
     Download,
     Catalog,
     Dubbing,
+    Merging,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -178,6 +181,10 @@ struct Settings {
     dub_soft_timing: bool,
     dub_natural_voice: bool,
     dub_keep_temp: bool,
+    merge_folder: String,
+    merge_output: String,
+    merge_overwrite: bool,
+    merge_reencode: bool,
 }
 
 impl Default for Settings {
@@ -204,6 +211,10 @@ impl Default for Settings {
             dub_soft_timing: false,
             dub_natural_voice: true,
             dub_keep_temp: false,
+            merge_folder: String::new(),
+            merge_output: String::new(),
+            merge_overwrite: true,
+            merge_reencode: false,
         }
     }
 }
@@ -298,6 +309,17 @@ struct App {
     dub_stage: String,
     dub_finished: bool,
 
+    merge_folder: String,
+    merge_output: String,
+    merge_video_count: usize,
+    merge_overwrite: bool,
+    merge_reencode: bool,
+    merge_total: usize,
+    merge_progress: f32,
+    merge_stage: String,
+    merge_output_path: String,
+    merge_finished: bool,
+
     donate_texture: Option<egui::TextureHandle>,
 
     child: Option<Child>,
@@ -334,6 +356,7 @@ impl App {
         {
             "catalog" => Tab::Catalog,
             "dubbing" | "tts" => Tab::Dubbing,
+            "merge" | "ghep" => Tab::Merge,
             "donate" => Tab::Donate,
             "log" => Tab::Log,
             _ => Tab::Download,
@@ -377,6 +400,8 @@ impl App {
         };
         let dub_folder = settings.dub_folder.clone();
         let dub_video_count = count_videos(&dub_folder);
+        let merge_folder = settings.merge_folder.clone();
+        let merge_video_count = count_videos(&merge_folder);
         let catalog_platform = if settings.catalog_platform.trim().is_empty() {
             "dramabox".to_owned()
         } else {
@@ -429,6 +454,16 @@ impl App {
             dub_progress: 0.0,
             dub_stage: String::new(),
             dub_finished: false,
+            merge_folder,
+            merge_output: settings.merge_output.clone(),
+            merge_video_count,
+            merge_overwrite: settings.merge_overwrite,
+            merge_reencode: settings.merge_reencode,
+            merge_total: 0,
+            merge_progress: 0.0,
+            merge_stage: String::new(),
+            merge_output_path: String::new(),
+            merge_finished: false,
             donate_texture: None,
             child: None,
             rx: None,
@@ -467,6 +502,10 @@ impl App {
             dub_soft_timing: self.dub_soft_timing,
             dub_natural_voice: self.dub_natural_voice,
             dub_keep_temp: self.dub_keep_temp,
+            merge_folder: self.merge_folder.clone(),
+            merge_output: self.merge_output.clone(),
+            merge_overwrite: self.merge_overwrite,
+            merge_reencode: self.merge_reencode,
         });
     }
 
@@ -671,6 +710,10 @@ impl App {
             self.dub_finished = true;
             self.dub_stage = "Đã hủy".to_owned();
         }
+        if self.busy == Busy::Merging {
+            self.merge_finished = true;
+            self.merge_stage = "Đã hủy".to_owned();
+        }
         self.busy = Busy::Idle;
         self.status = "Đã hủy".to_owned();
         self.error = None;
@@ -678,6 +721,53 @@ impl App {
             dl.finished = true;
         }
         self.push_log("Đã hủy tiến trình. File .part có thể còn lại trong thư mục tải.");
+    }
+
+    fn start_merge(&mut self, ctx: &egui::Context) {
+        if self.busy != Busy::Idle {
+            return;
+        }
+        let folder = self.merge_folder.trim().to_owned();
+        if !std::path::Path::new(&folder).is_dir() {
+            self.error = Some("Chọn thư mục chứa các tập phim trước.".to_owned());
+            return;
+        }
+        let count = count_videos(&folder);
+        if count == 0 {
+            self.error = Some("Không tìm thấy video trong thư mục.".to_owned());
+            return;
+        }
+
+        self.save_settings();
+        self.error = None;
+        self.merge_total = count;
+        self.merge_progress = 0.0;
+        self.merge_stage = "Bắt đầu".to_owned();
+        self.merge_output_path.clear();
+        self.merge_finished = false;
+        self.busy = Busy::Merging;
+        self.status = format!("Đang ghép {count} video...");
+        self.push_log(format!(
+            "Bắt đầu ghép {count} video từ {folder} ({})",
+            if self.merge_reencode {
+                "có re-encode dự phòng"
+            } else {
+                "copy nhanh"
+            }
+        ));
+
+        let request = json!({
+            "cmd": "merge",
+            "folder": folder,
+            "output": self.merge_output.trim(),
+            "overwrite": self.merge_overwrite,
+            "reencode": self.merge_reencode,
+        });
+        if let Err(error) = self.spawn_bridge(ctx, request) {
+            self.busy = Busy::Idle;
+            self.error = Some(error.clone());
+            self.push_log(format!("LỖI: {error}"));
+        }
     }
 
     fn spawn_bridge(&mut self, ctx: &egui::Context, request: Value) -> Result<(), String> {
@@ -1005,8 +1095,65 @@ impl App {
                     "Lồng tiếng hoàn tất: {done}/{total} video, {failed} lỗi, {elapsed:.1} giây"
                 ));
             }
+            "merge_start" => {
+                let total = value.get("total").and_then(Value::as_u64).unwrap_or(0) as usize;
+                let output = value.get("output").and_then(Value::as_str).unwrap_or("");
+                self.merge_total = total;
+                self.merge_progress = 0.0;
+                self.merge_stage = "Đang ghép".to_owned();
+                self.merge_finished = false;
+                self.merge_output_path = output.to_owned();
+                if self.merge_output.trim().is_empty() && !output.is_empty() {
+                    self.merge_output = output.to_owned();
+                }
+                self.status = format!("Đang ghép {total} video...");
+                if !output.is_empty() {
+                    self.push_log(format!("File full: {output}"));
+                }
+            }
+            "merge_progress" => {
+                let percent = value.get("percent").and_then(Value::as_f64).unwrap_or(0.0) as f32;
+                let message = value.get("message").and_then(Value::as_str).unwrap_or("");
+                self.merge_progress = (percent / 100.0).clamp(0.0, 1.0);
+                if !message.is_empty() {
+                    self.merge_stage = message.to_owned();
+                    self.status = format!("Ghép tập: {message}");
+                }
+            }
+            "merge_done" => {
+                let output = value.get("output").and_then(Value::as_str).unwrap_or("");
+                let size = value.get("size").and_then(Value::as_u64).unwrap_or(0);
+                let duration = value.get("duration").and_then(Value::as_f64).unwrap_or(0.0);
+                let elapsed = value.get("elapsed").and_then(Value::as_f64).unwrap_or(0.0);
+                self.merge_progress = 1.0;
+                if !output.is_empty() {
+                    self.merge_output_path = output.to_owned();
+                }
+                self.push_log(format!(
+                    "Đã ghép: {output} ({:.1} MB, {:.0} giây video, {:.1}s)",
+                    size as f64 / 1_048_576.0,
+                    duration,
+                    elapsed
+                ));
+            }
+            "merge_error" => {
+                let message = value
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("lỗi không xác định");
+                self.push_log(format!("LỖI ghép tập: {message}"));
+            }
+            "merge_finished" => {
+                let elapsed = value.get("elapsed").and_then(Value::as_f64).unwrap_or(0.0);
+                self.merge_finished = true;
+                self.merge_stage = "Hoàn tất".to_owned();
+                self.busy = Busy::Idle;
+                self.status = format!("Ghép xong ({elapsed:.1}s)");
+                self.push_log(format!("Ghép tập hoàn tất trong {elapsed:.1} giây."));
+            }
             "error" => {
                 let was_dubbing = self.busy == Busy::Dubbing;
+                let was_merging = self.busy == Busy::Merging;
                 let message = value
                     .get("message")
                     .and_then(Value::as_str)
@@ -1019,6 +1166,10 @@ impl App {
                     self.dub_finished = true;
                     self.dub_stage = "Lỗi".to_owned();
                     self.dub_current.clear();
+                }
+                if was_merging {
+                    self.merge_finished = true;
+                    self.merge_stage = "Lỗi".to_owned();
                 }
                 self.push_log(format!("LỖI: {message}"));
                 if let Some(traceback) = value.get("traceback").and_then(Value::as_str) {
@@ -1052,6 +1203,10 @@ impl App {
                         self.dub_finished = true;
                         self.dub_stage = "Tiến trình đã dừng".to_owned();
                         self.dub_current.clear();
+                    }
+                    if self.busy == Busy::Merging {
+                        self.merge_finished = true;
+                        self.merge_stage = "Tiến trình đã dừng".to_owned();
                     }
                     self.error = Some(
                         "Tiến trình Python đã dừng. Xem tab Nhật ký để biết chi tiết.".to_owned(),
@@ -1791,6 +1946,224 @@ impl App {
         }
     }
 
+    fn ui_merge(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let mut pick_input = false;
+        let mut pick_output = false;
+        let mut open_output = false;
+        let mut start = false;
+        let mut cancel = false;
+
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.label(
+                egui::RichText::new("GHÉP FULL TẬP")
+                    .small()
+                    .strong()
+                    .color(TEXT_MAIN),
+            );
+            ui.small(
+                "Nối toàn bộ video trong thư mục thành 1 file duy nhất. Dùng copy trực tiếp \
+                 (-c copy) nên rất nhanh, không render lại.",
+            );
+
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label("Thư mục video:");
+                let width = (ui.available_width() - 250.0).max(150.0);
+                let response = ui.add(
+                    egui::TextEdit::singleline(&mut self.merge_folder)
+                        .desired_width(width)
+                        .hint_text(
+                            egui::RichText::new("Chọn thư mục chứa các tập phim...")
+                                .color(TEXT_FADE),
+                        )
+                        .text_color(TEXT_MAIN),
+                );
+                if response.changed() {
+                    self.merge_video_count = count_videos(&self.merge_folder);
+                }
+                if ui.button("Chọn...").clicked() {
+                    pick_input = true;
+                }
+                if ui.button("Quét lại").clicked() {
+                    self.merge_video_count = count_videos(&self.merge_folder);
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("File đầu ra:");
+                let width = (ui.available_width() - 250.0).max(150.0);
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.merge_output)
+                        .desired_width(width)
+                        .hint_text(
+                            egui::RichText::new("Mặc định: <thư mục cha>/<tên thư mục> Full.mp4")
+                                .color(TEXT_FADE),
+                        )
+                        .text_color(TEXT_MAIN),
+                );
+                if ui.button("Chọn...").clicked() {
+                    pick_output = true;
+                }
+                if ui.button("Mở").clicked() {
+                    open_output = true;
+                }
+            });
+            if self.merge_video_count > 0 {
+                ui.colored_label(
+                    egui::Color32::from_rgb(120, 220, 150),
+                    format!(
+                        "Tìm thấy {} video. Sẽ ghép theo thứ tự EP01, EP02, ...",
+                        self.merge_video_count
+                    ),
+                );
+            } else if !self.merge_folder.trim().is_empty() {
+                ui.label(
+                    egui::RichText::new("Chưa tìm thấy video (mp4/mkv/mov/avi/webm/m4v).")
+                        .color(TEXT_FADE),
+                );
+            }
+        });
+
+        ui.add_space(8.0);
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.label(
+                egui::RichText::new("TUỲ CHỌN")
+                    .small()
+                    .strong()
+                    .color(TEXT_MAIN),
+            );
+            ui.horizontal_wrapped(|ui| {
+                ui.checkbox(
+                    &mut self.merge_overwrite,
+                    egui::RichText::new("Ghi đè file đã có").color(TEXT_MAIN),
+                );
+                ui.checkbox(
+                    &mut self.merge_reencode,
+                    egui::RichText::new("Ghép lại nếu lỗi (re-encode, chậm hơn)").color(TEXT_MAIN),
+                )
+                .on_hover_text(
+                    "Mặc định nối trực tiếp bằng -c copy. Nếu các tập khác codec/độ phân giải, \
+                     bật tuỳ chọn này để ghép lại.",
+                );
+            });
+            ui.small(
+                "Các tập tải cùng nền tảng thường cùng định dạng nên ghép copy chỉ mất vài giây.",
+            );
+        });
+
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            let can_start = self.busy == Busy::Idle && self.merge_video_count > 0;
+            if ui
+                .add_enabled(
+                    can_start,
+                    egui::Button::new("Bắt đầu ghép").fill(BRAND_BUTTON),
+                )
+                .clicked()
+            {
+                start = true;
+            }
+            if self.busy == Busy::Merging {
+                if ui
+                    .add(egui::Button::new("Hủy").fill(BRAND_BUTTON_HOVER))
+                    .clicked()
+                {
+                    cancel = true;
+                }
+            }
+            if ui.button("Mở thư mục xuất").clicked() {
+                open_output = true;
+            }
+            if self.busy == Busy::Merging {
+                ui.spinner();
+            }
+        });
+
+        if self.merge_total > 0 {
+            ui.add_space(8.0);
+            egui::Frame::group(ui.style()).show(ui, |ui| {
+                ui.label(
+                    egui::RichText::new("TIẾN ĐỘ")
+                        .small()
+                        .strong()
+                        .color(TEXT_MAIN),
+                );
+                ui.add(
+                    egui::ProgressBar::new(self.merge_progress.clamp(0.0, 1.0))
+                        .desired_width(ui.available_width())
+                        .show_percentage(),
+                );
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(format!("{} video", self.merge_total));
+                    if !self.merge_stage.is_empty() {
+                        ui.separator();
+                        ui.label(&self.merge_stage);
+                    }
+                });
+                if !self.merge_output_path.is_empty() {
+                    ui.label(egui::RichText::new(&self.merge_output_path).color(TEXT_FADE));
+                }
+                if self.merge_finished {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(120, 220, 150),
+                        "Hoàn tất. File full nằm trong thư mục xuất.",
+                    );
+                }
+            });
+        }
+
+        if pick_input {
+            if let Some(dir) = rfd::FileDialog::new()
+                .set_title("Chọn thư mục chứa các tập phim")
+                .pick_folder()
+            {
+                self.merge_folder = dir.display().to_string();
+                self.merge_video_count = count_videos(&self.merge_folder);
+                if self.merge_output.trim().is_empty() {
+                    self.merge_output = default_merge_output(&dir).display().to_string();
+                }
+            }
+        }
+        if pick_output {
+            let suggested = if self.merge_folder.trim().is_empty() {
+                "Full.mp4".to_owned()
+            } else {
+                default_merge_output(std::path::Path::new(self.merge_folder.trim()))
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("Full.mp4")
+                    .to_owned()
+            };
+            if let Some(path) = rfd::FileDialog::new()
+                .set_title("Chọn file đầu ra")
+                .set_file_name(&suggested)
+                .add_filter("Video MP4", &["mp4"])
+                .save_file()
+            {
+                self.merge_output = path.display().to_string();
+            }
+        }
+        if open_output {
+            let target = if self.merge_output.trim().is_empty() {
+                if self.merge_folder.trim().is_empty() {
+                    self.output_dir.clone()
+                } else {
+                    default_merge_output(std::path::Path::new(self.merge_folder.trim()))
+                        .display()
+                        .to_string()
+                }
+            } else {
+                self.merge_output.trim().to_owned()
+            };
+            open_output_folder(&target);
+        }
+        if cancel {
+            self.cancel();
+        }
+        if start {
+            self.start_merge(ctx);
+        }
+    }
+
     fn ui_donate(&mut self, ui: &mut egui::Ui) {
         let mut copied: Option<&'static str> = None;
 
@@ -1903,7 +2276,7 @@ impl eframe::App for App {
                 ui.heading(egui::RichText::new("DramaAI").color(BRAND_PINK));
                 ui.heading("Tiktok Downloader");
                 ui.label(
-                    egui::RichText::new("Rust GUI • Python core • v1.1.9")
+                    egui::RichText::new("Rust GUI • Python core • v1.2.0")
                         .small()
                         .weak(),
                 );
@@ -1921,6 +2294,7 @@ impl eframe::App for App {
                     Tab::Download,
                     Tab::Catalog,
                     Tab::Dubbing,
+                    Tab::Merge,
                     Tab::Donate,
                     Tab::Log,
                 ] {
@@ -1992,6 +2366,19 @@ impl eframe::App for App {
                         );
                     }
                 }
+                if self.busy == Busy::Merging || self.merge_total > 0 {
+                    ui.separator();
+                    ui.add(
+                        egui::ProgressBar::new(self.merge_progress.clamp(0.0, 1.0))
+                            .desired_width(150.0)
+                            .show_percentage(),
+                    );
+                    if self.busy == Busy::Merging {
+                        if ui.small_button("Hủy").clicked() {
+                            cancel_download = true;
+                        }
+                    }
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if let Some(series) = &self.series {
                         ui.label(
@@ -2022,6 +2409,11 @@ impl eframe::App for App {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| self.ui_dubbing(ui, ctx));
+            }
+            Tab::Merge => {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.ui_merge(ui, ctx));
             }
             Tab::Donate => {
                 egui::ScrollArea::vertical()
@@ -2318,6 +2710,18 @@ fn default_dub_output(folder: &std::path::Path) -> PathBuf {
     parent.join(format!("{name} Lồng Tiếng"))
 }
 
+fn default_merge_output(folder: &std::path::Path) -> PathBuf {
+    let name = folder
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("video");
+    let parent = folder
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(folder);
+    parent.join(format!("{name} Full.mp4"))
+}
+
 fn count_videos(folder: &str) -> usize {
     const EXTENSIONS: &[&str] = &["mp4", "mkv", "mov", "avi", "webm", "m4v"];
     let Ok(entries) = std::fs::read_dir(folder) else {
@@ -2528,6 +2932,10 @@ mod tests {
         settings.dub_soft_timing = true;
         settings.dub_natural_voice = false;
         settings.dub_keep_temp = true;
+        settings.merge_folder = "C:\\Phim AI\\Phim".to_owned();
+        settings.merge_output = "C:\\Phim AI\\Phim Full.mp4".to_owned();
+        settings.merge_overwrite = false;
+        settings.merge_reencode = true;
 
         let text = serde_json::to_string(&settings).expect("serialize settings");
         let roundtrip: super::Settings = serde_json::from_str(&text).expect("deserialize");
@@ -2545,6 +2953,10 @@ mod tests {
         assert!(roundtrip.dub_soft_timing);
         assert!(!roundtrip.dub_natural_voice);
         assert!(roundtrip.dub_keep_temp);
+        assert_eq!(roundtrip.merge_folder, "C:\\Phim AI\\Phim");
+        assert_eq!(roundtrip.merge_output, "C:\\Phim AI\\Phim Full.mp4");
+        assert!(!roundtrip.merge_overwrite);
+        assert!(roundtrip.merge_reencode);
     }
 }
 
@@ -2558,7 +2970,7 @@ fn main() -> eframe::Result {
         .with_inner_size([960.0, 680.0])
         .with_min_inner_size([820.0, 560.0])
         .with_resizable(true)
-        .with_title("DramaAI Tiktok Downloader v1.1.9");
+        .with_title("DramaAI Tiktok Downloader v1.2.0");
     if let Some(icon) = load_window_icon() {
         viewport = viewport.with_icon(std::sync::Arc::new(icon));
     }
@@ -2570,7 +2982,7 @@ fn main() -> eframe::Result {
     };
 
     eframe::run_native(
-        "DramaAI Tiktok Downloader v1.1.9",
+        "DramaAI Tiktok Downloader v1.2.0",
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )

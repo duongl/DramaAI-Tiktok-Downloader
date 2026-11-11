@@ -6,10 +6,13 @@
 </p>
 <p align="center">
   <img src="screenshots/long-tieng.png" alt="Tab Lồng tiếng" width="49%" />
-  <img src="screenshots/nhat-ky.png" alt="Tab Nhật ký" width="49%" />
+  <img src="screenshots/ghep-tap.png" alt="Tab Ghép tập" width="49%" />
 </p>
 <p align="center">
   <img src="screenshots/donate.png" alt="Tab Donate với VietQR" width="49%" />
+  <img src="screenshots/nhat-ky.png" alt="Tab Nhật ký" width="49%" />
+</p>
+<p align="center">
   <img src="screenshots/nen-tang.png" alt="Chọn nền tảng hỗ trợ" width="49%" />
 </p>
 
@@ -60,6 +63,7 @@ run_gui.bat
 - Chọn thư mục tải bằng hộp thoại Windows, mở thư mục sau khi tải.
 - Tab **Danh mục** để duyệt phim (DramaBox và ShortMax).
 - Tab **Lồng tiếng**: chọn cả thư mục phim, OCR phụ đề Việt có sẵn, tạo TTS bằng Edge TTS hoặc VieNeu-TTS local (25 giọng, 48 kHz), Soft Timing và Voice tự nhiên, rồi trộn với âm thanh gốc. Kết quả nằm trong thư mục `<tên phim> Lồng Tiếng`; mặc định tự xóa `_phude` và `_tts_cache` sau khi xong.
+- Tab **Ghép tập**: chọn thư mục phim, nối toàn bộ tập thành 1 file full duy nhất bằng `ffmpeg concat -c copy` — không render lại, chạy rất nhanh.
 - Tab **Donate** với mã VietQR, thông tin Vietcombank và nút sao chép nhanh.
 - Tab **Nhật ký** ghi lại từng bước và lỗi.
 - Giao diện tông hồng–cam lấy cảm hứng từ DramaBox, cửa sổ tự căn giữa khi mở.

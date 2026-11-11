@@ -28,6 +28,7 @@ Dự án được tối ưu hóa cho Python, tích hợp sẵn các thuật toá
 - [Sử dụng dòng lệnh (CLI)](#-sử-dụng-dòng-lệnh-cli)
 - [Giao diện Desktop (Rust GUI)](#️-giao-diện-desktop-rust-gui)
 - [Lồng tiếng hàng loạt (OCR + TTS)](#️-lồng-tiếng-hàng-loạt-ocr--tts)
+- [Ghép full tập (Merge)](#-ghép-full-tập-merge)
 - [Sử dụng trong mã nguồn Python (API)](#-sử-dụng-trong-mã-nguồn-python-api)
 - [Cơ chế xử lý Phụ đề (SRT / VTT Engine)](#-cơ-chế-xử-lý-phụ-đề-srt--vtt-engine)
 - [Kiến trúc kỹ thuật & Mật mã học](#-kiến-trúc-kỹ-thuật--mật-mã-học)
@@ -47,6 +48,7 @@ Dự án được tối ưu hóa cho Python, tích hợp sẵn các thuật toá
 - 🎯 **Tự động bóc tách & chuyển đổi phụ đề:** Tự động tải phụ đề đi kèm tập phim và chuyển đổi chuẩn hóa WebVTT sang SubRip (.srt) tương thích mọi thiết bị.
 - 💻 **Giao diện dòng lệnh (CLI) trực quan:** Xem trước danh sách tập, phân loại tập khóa/mở khóa (`[FREE] [HAS STREAM]`), tải theo dải tập (ví dụ: `1-10,15,20`).
 - 🎙️ **Lồng tiếng hàng loạt:** OCR phụ đề Việt có sẵn trong video, tạo giọng đọc bằng Edge TTS hoặc VieNeu-TTS local (25 giọng, 48 kHz), trộn với âm thanh gốc và tự dọn file tạm — chỉ giữ thư mục `<tên phim> Lồng Tiếng`.
+- 🧩 **Ghép full tập:** Chọn thư mục phim, app nối toàn bộ tập thành 1 file duy nhất bằng `ffmpeg concat -c copy` — không render lại, chỉ mất vài giây.
 - 💾 **Tự lưu toàn bộ thiết lập:** thư mục tải, nền tảng, nguồn giọng, giọng đọc, mức âm gốc/âm lồng, tốc độ đọc và các checkbox được khôi phục khi mở lại app.
 - 📦 **Kiến trúc Module hóa:** Dễ dàng tích hợp vào bot Telegram, FastAPI web service, hoặc crawler tự động.
 
@@ -165,14 +167,17 @@ Bản GUI native viết bằng Rust (egui/eframe) cho Windows, dùng lõi Python
 </p>
 <p align="center">
   <img src="gui/screenshots/long-tieng.png" alt="Tab Lồng tiếng" width="49%" />
-  <img src="gui/screenshots/nhat-ky.png" alt="Tab Nhật ký" width="49%" />
+  <img src="gui/screenshots/ghep-tap.png" alt="Tab Ghép tập" width="49%" />
 </p>
 <p align="center">
   <img src="gui/screenshots/donate.png" alt="Tab Donate với VietQR" width="49%" />
+  <img src="gui/screenshots/nhat-ky.png" alt="Tab Nhật ký" width="49%" />
+</p>
+<p align="center">
   <img src="gui/screenshots/nen-tang.png" alt="Chọn nền tảng hỗ trợ" width="49%" />
 </p>
 
-Các tab chính: **Tải phim**, **Danh mục**, **Lồng tiếng**, **Donate**, **Nhật ký**.
+Các tab chính: **Tải phim**, **Danh mục**, **Lồng tiếng**, **Ghép tập**, **Donate**, **Nhật ký**.
 
 - Xem thông tin phim, chọn tập bằng checkbox, lọc và nhập dải tập.
 - Tải song song, thanh tiến trình từng tập, hủy giữa chừng.
@@ -318,6 +323,31 @@ Thời gian tham khảo trên CPU: video 20 giây mất ~1,5 phút ở chế đ�
 
 ---
 
+## 🧩 Ghép full tập (Merge)
+
+Tab **Ghép tập** nối toàn bộ video trong một thư mục thành **1 file duy nhất** (full series). Cách làm là `ffmpeg concat -c copy` — chỉ nối dữ liệu gốc, **không render lại**, nên rất nhanh (thường vài giây cho cả bộ).
+
+### Cách dùng
+
+1. Mở tab **Ghép tập**.
+2. Chọn **Thư mục video** (ví dụ `Download Phim AI\Yêu Đương Chẳng Bằng Đi Ăn Lẩu`).
+3. **File đầu ra** mặc định là `<thư mục cha>/<tên thư mục> Full.mp4`, ví dụ `Download Phim AI\Yêu Đương Chẳng Bằng Đi Ăn Lẩu Full.mp4`.
+4. Bấm **Bắt đầu ghép**.
+
+App tự sắp xếp theo số tập: `EP01, EP02, ... EP10, EP11, ...` kể cả khi tên file không có số 0 ở đầu.
+
+### Tuỳ chọn
+
+- **Ghi đè file đã có:** mặc định bật.
+- **Ghép lại nếu lỗi (re-encode, chậm hơn):** chỉ bật khi các tập khác codec/độ phân giải khiến `-c copy` báo lỗi; khi đó app mới mã hoá lại.
+
+### Lưu ý
+
+- Các tập tải cùng một nền tảng thường cùng định dạng nên ghép copy rất nhanh.
+- Thư mục, file đầu ra và tuỳ chọn được tự lưu khi thoát app.
+
+---
+
 ## 🐍 Sử dụng trong mã nguồn Python (API)
 
 ### Trích xuất thông tin Series & Stream URL
@@ -435,6 +465,8 @@ drama_downloader/
 ├── client.py            # Session pooling & auto-retry
 ├── downloader.py        # Quản lý tải song song đa luồng & Subtitle Engine
 ├── bridge.py            # JSON bridge cho Rust GUI
+├── dubbing.py           # OCR hardsub + TTS + trộn âm thanh
+├── merge.py             # Ghép full tập bằng ffmpeg concat -c copy
 ├── crypto/
 │   ├── dramabox_rsa.py  # RSA-SHA256 signature (CRT normalized)
 │   └── spade.py         # ByteDance Spade cipher

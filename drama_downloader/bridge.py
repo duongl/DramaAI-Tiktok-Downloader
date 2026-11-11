@@ -243,6 +243,27 @@ def cmd_dub(req):
     return 0
 
 
+def cmd_merge(req):
+    from drama_downloader import merge
+
+    folder = (req.get("folder") or "").strip()
+    if not folder or not Path(folder).is_dir():
+        raise ValueError("Thư mục video không hợp lệ.")
+
+    output = (req.get("output") or "").strip() or str(merge.default_merge_output(folder))
+    overwrite = bool(req.get("overwrite", True))
+    reencode = bool(req.get("reencode", False))
+
+    merge.merge_folder(
+        folder=folder,
+        output=output,
+        overwrite=overwrite,
+        reencode=reencode,
+        emit=emit,
+    )
+    return 0
+
+
 def main():
     raw = sys.stdin.buffer.read().decode("utf-8", errors="replace")
     try:
@@ -261,6 +282,8 @@ def main():
             return cmd_catalog(req)
         if command == "dub":
             return cmd_dub(req)
+        if command == "merge":
+            return cmd_merge(req)
         raise ValueError(f"Lệnh không hỗ trợ: {command!r}")
     except Exception as exc:
         emit(

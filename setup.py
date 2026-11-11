@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="dramaai-tiktok-downloader",
-    version="1.1.9",
+    version="1.2.0",
     description="DramaAI Tiktok Downloader - Multi-Platform Short Drama Extractor and Downloader Module",
     packages=find_packages(),
     install_requires=[

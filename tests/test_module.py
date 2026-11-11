@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import drama_downloader as dd
-from drama_downloader import dubbing
+from drama_downloader import dubbing, merge
 from drama_downloader.downloader import (
     DramaDownloader,
     sanitize_filename,
@@ -148,6 +148,68 @@ Hello World!
             Path(r"C:\Phim AI\Yêu Đương Chẳng Bằng Đi Ăn Lẩu Lồng Tiếng"),
         )
         print("[OK] TTS voice catalog test passed")
+
+    def test_merge_helpers(self):
+        paths = [
+            Path("EP10 - 第十集.mp4"),
+            Path("EP2 - 第二集.mp4"),
+            Path("EP1 - 第一集.mp4"),
+        ]
+        ordered = sorted(paths, key=merge.natural_sort_key)
+        self.assertEqual(
+            [path.name for path in ordered],
+            ["EP1 - 第一集.mp4", "EP2 - 第二集.mp4", "EP10 - 第十集.mp4"],
+        )
+        self.assertEqual(
+            merge.default_merge_output(r"C:\Phim AI\Yêu Đương Chẳng Bằng Đi Ăn Lẩu"),
+            Path(r"C:\Phim AI\Yêu Đương Chẳng Bằng Đi Ăn Lẩu Full.mp4"),
+        )
+        print("[OK] Merge helper test passed")
+
+    def test_merge_copy(self):
+        import shutil
+        import subprocess
+
+        if shutil.which("ffmpeg") is None:
+            self.skipTest("ffmpeg not available")
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            source = base / "Demo Series"
+            source.mkdir()
+            for index, name in enumerate(["EP1 - 第一集", "EP2 - 第二集"]):
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-v",
+                        "error",
+                        "-y",
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        "testsrc=size=160x120:rate=10:duration=1",
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        "sine=frequency=440:duration=1",
+                        "-c:v",
+                        "libx264",
+                        "-preset",
+                        "ultrafast",
+                        "-c:a",
+                        "aac",
+                        "-shortest",
+                        str(source / f"{name}.mp4"),
+                    ],
+                    check=True,
+                )
+            output = merge.default_merge_output(source)
+            result = merge.merge_folder(
+                source, output, overwrite=True, reencode=False, emit=lambda *a, **k: None
+            )
+            self.assertTrue(output.is_file())
+            self.assertGreater(result["size"], 0)
+            self.assertGreater(result["duration"], 1.8)
+        print("[OK] Merge copy test passed")
 
 
 if __name__ == "__main__":
