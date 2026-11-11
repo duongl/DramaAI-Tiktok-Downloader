@@ -31,7 +31,43 @@ const DUB_VOICES: &[(&str, &str)] = &[
 const TTS_PROVIDERS: &[(&str, &str)] = &[
     ("edge", "Edge TTS (online)"),
     ("vieneu", "VieNeu-TTS (local, 48kHz)"),
+    ("zerotts", "ZeroTTS (local, 8 giọng)"),
+    ("gtts", "Google TTS — gTTS (online)"),
+    ("elevenlabs", "ElevenLabs (API key)"),
+    ("openai", "OpenAI TTS (API key)"),
+    ("google", "Google Cloud TTS (service account)"),
+    ("azure", "Azure Speech (API key)"),
 ];
+
+const ZEROTTS_VOICES: &[(&str, &str)] = &[
+    ("maichi", "Mai Chi — nữ, kể chuyện"),
+    ("baotrang", "Bảo Trang — nữ, tin tức"),
+    ("kimoanh", "Kim Oanh — nữ, trung niên"),
+    ("hamy", "Hà My — nữ, hoạt hình"),
+    ("giahuy", "Gia Huy — nam, trầm ấm"),
+    ("huuduc", "Hữu Đức — nam, lớn tuổi"),
+    ("quangminh", "Quang Minh — nam, tin tức"),
+    ("tiendat", "Tiến Đạt — nam, bình luận"),
+];
+
+const OPENAI_VOICES: &[&str] = &[
+    "alloy", "ash", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer",
+];
+
+const GOOGLE_VOICES: &[&str] = &[
+    "vi-VN-Wavenet-A",
+    "vi-VN-Wavenet-B",
+    "vi-VN-Wavenet-C",
+    "vi-VN-Wavenet-D",
+    "vi-VN-Standard-A",
+    "vi-VN-Standard-B",
+    "vi-VN-Standard-C",
+    "vi-VN-Standard-D",
+];
+
+const AZURE_VOICES: &[&str] = &["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"];
+
+const ELEVENLABS_DEFAULT_VOICE: &str = "21m00Tcm4TlvDq8ikWAM";
 
 const VIENEU_VOICES: &[&str] = &[
     "Adam bựa",
@@ -181,6 +217,9 @@ struct Settings {
     dub_soft_timing: bool,
     dub_natural_voice: bool,
     dub_keep_temp: bool,
+    tts_api_key: String,
+    tts_region: String,
+    tts_credentials: String,
     merge_folder: String,
     merge_output: String,
     merge_overwrite: bool,
@@ -211,6 +250,9 @@ impl Default for Settings {
             dub_soft_timing: false,
             dub_natural_voice: true,
             dub_keep_temp: false,
+            tts_api_key: String::new(),
+            tts_region: String::new(),
+            tts_credentials: String::new(),
             merge_folder: String::new(),
             merge_output: String::new(),
             merge_overwrite: true,
@@ -300,6 +342,9 @@ struct App {
     dub_soft_timing: bool,
     dub_natural_voice: bool,
     dub_keep_temp: bool,
+    tts_api_key: String,
+    tts_region: String,
+    tts_credentials: String,
     dub_video_count: usize,
     dub_total: usize,
     dub_done: usize,
@@ -377,21 +422,18 @@ impl App {
             log.push_back(format!("{} Thư mục tải đã lưu: {}", now_hms(), output_dir));
         }
 
-        let dub_provider = if settings.dub_provider == "vieneu" {
-            "vieneu".to_owned()
+        let dub_provider = if TTS_PROVIDERS
+            .iter()
+            .any(|(id, _)| *id == settings.dub_provider)
+        {
+            settings.dub_provider.clone()
         } else {
             "edge".to_owned()
         };
-        let dub_voice = if dub_provider == "vieneu" {
-            if VIENEU_VOICES.contains(&settings.dub_voice.as_str()) {
-                settings.dub_voice.clone()
-            } else {
-                VIENEU_VOICES[0].to_owned()
-            }
-        } else if DUB_VOICES.iter().any(|(id, _)| *id == settings.dub_voice) {
+        let dub_voice = if is_voice_valid(&dub_provider, &settings.dub_voice) {
             settings.dub_voice.clone()
         } else {
-            DUB_VOICES[0].0.to_owned()
+            default_tts_voice(&dub_provider)
         };
         let dub_ocr_mode = if settings.dub_ocr_mode == "fast" {
             "fast".to_owned()
@@ -446,6 +488,9 @@ impl App {
             dub_soft_timing: settings.dub_soft_timing,
             dub_natural_voice: settings.dub_natural_voice,
             dub_keep_temp: settings.dub_keep_temp,
+            tts_api_key: settings.tts_api_key.clone(),
+            tts_region: settings.tts_region.clone(),
+            tts_credentials: settings.tts_credentials.clone(),
             dub_video_count,
             dub_total: 0,
             dub_done: 0,
@@ -502,6 +547,9 @@ impl App {
             dub_soft_timing: self.dub_soft_timing,
             dub_natural_voice: self.dub_natural_voice,
             dub_keep_temp: self.dub_keep_temp,
+            tts_api_key: self.tts_api_key.clone(),
+            tts_region: self.tts_region.clone(),
+            tts_credentials: self.tts_credentials.clone(),
             merge_folder: self.merge_folder.clone(),
             merge_output: self.merge_output.clone(),
             merge_overwrite: self.merge_overwrite,
@@ -693,6 +741,9 @@ impl App {
             "soft_timing": self.dub_soft_timing,
             "natural_voice": self.dub_natural_voice,
             "keep_temp": self.dub_keep_temp,
+            "tts_api_key": self.tts_api_key,
+            "tts_region": self.tts_region,
+            "tts_credentials": self.tts_credentials,
         });
         if let Err(error) = self.spawn_bridge(ctx, request) {
             self.busy = Busy::Idle;
@@ -1636,6 +1687,7 @@ impl App {
         let mut pick_input = false;
         let mut pick_output = false;
         let mut open_output = false;
+        let mut google_pick = false;
         let mut start = false;
         let mut cancel = false;
 
@@ -1718,7 +1770,7 @@ impl App {
                 ui.label("Nguồn giọng:");
                 let provider_before = self.dub_provider.clone();
                 egui::ComboBox::from_id_salt("dub_provider")
-                    .width(200.0)
+                    .width(230.0)
                     .selected_text(tts_provider_label(&self.dub_provider))
                     .show_ui(ui, |ui| {
                         combo_popup_style(ui);
@@ -1727,29 +1779,90 @@ impl App {
                         }
                     });
                 if self.dub_provider != provider_before {
-                    self.dub_voice = if self.dub_provider == "vieneu" {
-                        VIENEU_VOICES[0].to_owned()
-                    } else {
-                        DUB_VOICES[0].0.to_owned()
-                    };
+                    self.dub_voice = default_tts_voice(&self.dub_provider);
                 }
                 ui.separator();
                 ui.label("Giọng:");
-                egui::ComboBox::from_id_salt("dub_voice")
-                    .width(180.0)
-                    .selected_text(dub_voice_display(&self.dub_provider, &self.dub_voice))
-                    .show_ui(ui, |ui| {
-                        combo_popup_style(ui);
-                        if self.dub_provider == "vieneu" {
-                            for id in VIENEU_VOICES {
-                                ui.selectable_value(&mut self.dub_voice, (*id).to_owned(), *id);
-                            }
-                        } else {
-                            for (id, name) in DUB_VOICES {
-                                ui.selectable_value(&mut self.dub_voice, (*id).to_owned(), *name);
-                            }
-                        }
-                    });
+                match self.dub_provider.as_str() {
+                    "elevenlabs" => {
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.dub_voice)
+                                .desired_width(230.0)
+                                .hint_text(
+                                    egui::RichText::new("Voice ID (mặc định: Rachel)")
+                                        .color(TEXT_FADE),
+                                )
+                                .text_color(TEXT_MAIN),
+                        );
+                    }
+                    "gtts" => {
+                        ui.label(egui::RichText::new("Tiếng Việt").color(TEXT_MAIN));
+                    }
+                    _ => {
+                        egui::ComboBox::from_id_salt("dub_voice")
+                            .width(210.0)
+                            .selected_text(dub_voice_display(&self.dub_provider, &self.dub_voice))
+                            .show_ui(ui, |ui| {
+                                combo_popup_style(ui);
+                                match self.dub_provider.as_str() {
+                                    "vieneu" => {
+                                        for id in VIENEU_VOICES {
+                                            ui.selectable_value(
+                                                &mut self.dub_voice,
+                                                (*id).to_owned(),
+                                                *id,
+                                            );
+                                        }
+                                    }
+                                    "zerotts" => {
+                                        for (id, name) in ZEROTTS_VOICES {
+                                            ui.selectable_value(
+                                                &mut self.dub_voice,
+                                                (*id).to_owned(),
+                                                *name,
+                                            );
+                                        }
+                                    }
+                                    "openai" => {
+                                        for id in OPENAI_VOICES {
+                                            ui.selectable_value(
+                                                &mut self.dub_voice,
+                                                (*id).to_owned(),
+                                                *id,
+                                            );
+                                        }
+                                    }
+                                    "google" => {
+                                        for id in GOOGLE_VOICES {
+                                            ui.selectable_value(
+                                                &mut self.dub_voice,
+                                                (*id).to_owned(),
+                                                *id,
+                                            );
+                                        }
+                                    }
+                                    "azure" => {
+                                        for id in AZURE_VOICES {
+                                            ui.selectable_value(
+                                                &mut self.dub_voice,
+                                                (*id).to_owned(),
+                                                *id,
+                                            );
+                                        }
+                                    }
+                                    _ => {
+                                        for (id, name) in DUB_VOICES {
+                                            ui.selectable_value(
+                                                &mut self.dub_voice,
+                                                (*id).to_owned(),
+                                                *name,
+                                            );
+                                        }
+                                    }
+                                }
+                            });
+                    }
+                }
                 ui.separator();
                 ui.label("Chế độ OCR:");
                 egui::ComboBox::from_id_salt("dub_ocr_mode")
@@ -1773,6 +1886,89 @@ impl App {
                         );
                     });
             });
+            match self.dub_provider.as_str() {
+                "elevenlabs" => {
+                    ui.horizontal(|ui| {
+                        ui.label("ElevenLabs API key:");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.tts_api_key)
+                                .password(true)
+                                .desired_width(360.0)
+                                .hint_text(
+                                    egui::RichText::new("Dán API key từ elevenlabs.io")
+                                        .color(TEXT_FADE),
+                                )
+                                .text_color(TEXT_MAIN),
+                        );
+                    });
+                }
+                "openai" => {
+                    ui.horizontal(|ui| {
+                        ui.label("OpenAI API key:");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.tts_api_key)
+                                .password(true)
+                                .desired_width(360.0)
+                                .hint_text(
+                                    egui::RichText::new("Dán API key từ platform.openai.com")
+                                        .color(TEXT_FADE),
+                                )
+                                .text_color(TEXT_MAIN),
+                        );
+                    });
+                }
+                "google" => {
+                    ui.horizontal(|ui| {
+                        ui.label("Credentials JSON:");
+                        let width = (ui.available_width() - 130.0).max(150.0);
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.tts_credentials)
+                                .desired_width(width)
+                                .hint_text(
+                                    egui::RichText::new(
+                                        "Đường dẫn file service-account JSON của Google Cloud",
+                                    )
+                                    .color(TEXT_FADE),
+                                )
+                                .text_color(TEXT_MAIN),
+                        );
+                        if ui.button("Chọn...").clicked() {
+                            google_pick = true;
+                        }
+                    });
+                }
+                "azure" => {
+                    ui.horizontal(|ui| {
+                        ui.label("Azure key:");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.tts_api_key)
+                                .password(true)
+                                .desired_width(280.0)
+                                .hint_text(egui::RichText::new("Speech key").color(TEXT_FADE))
+                                .text_color(TEXT_MAIN),
+                        );
+                        ui.label("Region:");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.tts_region)
+                                .desired_width(110.0)
+                                .hint_text(egui::RichText::new("southeastasia").color(TEXT_FADE))
+                                .text_color(TEXT_MAIN),
+                        );
+                    });
+                }
+                "zerotts" => {
+                    ui.small(
+                        "ZeroTTS local (MIT): lần đầu tải model ~900 MB, sau đó chạy offline trên CPU. \
+                         Cài bằng: pip install zerotts",
+                    );
+                }
+                "gtts" => {
+                    ui.small(
+                        "gTTS dùng Google Translate TTS (miễn phí), cần mạng và có thể bị giới hạn tần suất.",
+                    );
+                }
+                _ => {}
+            }
             ui.horizontal(|ui| {
                 ui.checkbox(
                     &mut self.dub_original_enabled,
@@ -1904,6 +2100,15 @@ impl App {
             });
         }
 
+        if google_pick {
+            if let Some(path) = rfd::FileDialog::new()
+                .set_title("Chọn file service-account JSON của Google Cloud")
+                .add_filter("JSON", &["json"])
+                .pick_file()
+            {
+                self.tts_credentials = path.display().to_string();
+            }
+        }
         if pick_input {
             if let Some(dir) = rfd::FileDialog::new()
                 .set_title("Chọn thư mục chứa video")
@@ -2276,7 +2481,7 @@ impl eframe::App for App {
                 ui.heading(egui::RichText::new("DramaAI").color(BRAND_PINK));
                 ui.heading("Tiktok Downloader");
                 ui.label(
-                    egui::RichText::new("Rust GUI • Python core • v1.2.0")
+                    egui::RichText::new("Rust GUI • Python core • v1.3.0")
                         .small()
                         .weak(),
                 );
@@ -2690,11 +2895,43 @@ fn tts_provider_label(id: &str) -> &'static str {
         .unwrap_or("Edge TTS")
 }
 
+fn default_tts_voice(provider: &str) -> String {
+    match provider {
+        "edge" => DUB_VOICES[0].0.to_owned(),
+        "vieneu" => VIENEU_VOICES[0].to_owned(),
+        "zerotts" => ZEROTTS_VOICES[0].0.to_owned(),
+        "gtts" => "vi".to_owned(),
+        "elevenlabs" => ELEVENLABS_DEFAULT_VOICE.to_owned(),
+        "openai" => OPENAI_VOICES[0].to_owned(),
+        "google" => GOOGLE_VOICES[0].to_owned(),
+        "azure" => AZURE_VOICES[0].to_owned(),
+        _ => DUB_VOICES[0].0.to_owned(),
+    }
+}
+
+fn is_voice_valid(provider: &str, voice: &str) -> bool {
+    match provider {
+        "edge" => DUB_VOICES.iter().any(|(id, _)| *id == voice),
+        "vieneu" => VIENEU_VOICES.contains(&voice),
+        "zerotts" => ZEROTTS_VOICES.iter().any(|(id, _)| *id == voice),
+        "gtts" => voice == "vi",
+        "openai" => OPENAI_VOICES.contains(&voice),
+        "google" => GOOGLE_VOICES.contains(&voice),
+        "azure" => AZURE_VOICES.contains(&voice),
+        "elevenlabs" => !voice.trim().is_empty(),
+        _ => false,
+    }
+}
+
 fn dub_voice_display<'a>(provider: &str, voice: &'a str) -> &'a str {
-    if provider == "vieneu" {
-        voice
-    } else {
-        dub_voice_label(voice)
+    match provider {
+        "edge" => dub_voice_label(voice),
+        "zerotts" => ZEROTTS_VOICES
+            .iter()
+            .find(|(id, _)| *id == voice)
+            .map(|(_, name)| *name)
+            .unwrap_or(voice),
+        _ => voice,
     }
 }
 
@@ -2936,6 +3173,9 @@ mod tests {
         settings.merge_output = "C:\\Phim AI\\Phim Full.mp4".to_owned();
         settings.merge_overwrite = false;
         settings.merge_reencode = true;
+        settings.tts_api_key = "key-123".to_owned();
+        settings.tts_region = "southeastasia".to_owned();
+        settings.tts_credentials = "C:\\keys\\google.json".to_owned();
 
         let text = serde_json::to_string(&settings).expect("serialize settings");
         let roundtrip: super::Settings = serde_json::from_str(&text).expect("deserialize");
@@ -2957,6 +3197,9 @@ mod tests {
         assert_eq!(roundtrip.merge_output, "C:\\Phim AI\\Phim Full.mp4");
         assert!(!roundtrip.merge_overwrite);
         assert!(roundtrip.merge_reencode);
+        assert_eq!(roundtrip.tts_api_key, "key-123");
+        assert_eq!(roundtrip.tts_region, "southeastasia");
+        assert_eq!(roundtrip.tts_credentials, "C:\\keys\\google.json");
     }
 }
 
@@ -2970,7 +3213,7 @@ fn main() -> eframe::Result {
         .with_inner_size([960.0, 680.0])
         .with_min_inner_size([820.0, 560.0])
         .with_resizable(true)
-        .with_title("DramaAI Tiktok Downloader v1.2.0");
+        .with_title("DramaAI Tiktok Downloader v1.3.0");
     if let Some(icon) = load_window_icon() {
         viewport = viewport.with_icon(std::sync::Arc::new(icon));
     }
@@ -2982,7 +3225,7 @@ fn main() -> eframe::Result {
     };
 
     eframe::run_native(
-        "DramaAI Tiktok Downloader v1.2.0",
+        "DramaAI Tiktok Downloader v1.3.0",
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )

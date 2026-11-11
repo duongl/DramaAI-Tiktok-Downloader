@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="dramaai-tiktok-downloader",
-    version="1.2.0",
+    version="1.3.0",
     description="DramaAI Tiktok Downloader - Multi-Platform Short Drama Extractor and Downloader Module",
     packages=find_packages(),
     install_requires=[
@@ -30,6 +30,18 @@ setup(
         # Requires Python 3.10+; models download on first use.
         "dubbing-vieneu": [
             "vieneu>=3.8.4",
+        ],
+        # Optional local ZeroTTS (MIT, ONNX CPU, 8 Vietnamese voices).
+        "dubbing-zerotts": [
+            "zerotts>=0.1.5",
+        ],
+        # Optional free online provider (Google Translate TTS).
+        "dubbing-gtts": [
+            "gTTS>=2.5.0",
+        ],
+        # Optional Google Cloud TTS (needs a service-account JSON).
+        "dubbing-google": [
+            "google-cloud-texttospeech>=2.16.0",
         ],
     },
     entry_points={

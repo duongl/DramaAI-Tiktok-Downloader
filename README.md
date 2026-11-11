@@ -47,7 +47,7 @@ Dự án được tối ưu hóa cho Python, tích hợp sẵn các thuật toá
 - 📁 **Tự động phân thư mục theo series:** Mỗi phim được lưu vào thư mục con đúng tên series (ví dụ `Download Phim AI/Yêu Đương Chẳng Bằng Đi Ăn Lẩu/EP01 - ...mp4`), không lẫn với phim khác.
 - 🎯 **Tự động bóc tách & chuyển đổi phụ đề:** Tự động tải phụ đề đi kèm tập phim và chuyển đổi chuẩn hóa WebVTT sang SubRip (.srt) tương thích mọi thiết bị.
 - 💻 **Giao diện dòng lệnh (CLI) trực quan:** Xem trước danh sách tập, phân loại tập khóa/mở khóa (`[FREE] [HAS STREAM]`), tải theo dải tập (ví dụ: `1-10,15,20`).
-- 🎙️ **Lồng tiếng hàng loạt:** OCR phụ đề Việt có sẵn trong video, tạo giọng đọc bằng Edge TTS hoặc VieNeu-TTS local (25 giọng, 48 kHz), trộn với âm thanh gốc và tự dọn file tạm — chỉ giữ thư mục `<tên phim> Lồng Tiếng`.
+- 🎙️ **Lồng tiếng hàng loạt:** OCR phụ đề Việt có sẵn trong video, tạo giọng đọc bằng 8 nguồn (Edge TTS, VieNeu-TTS 25 giọng, ZeroTTS 8 giọng, gTTS, ElevenLabs, OpenAI, Google Cloud, Azure), trộn với âm thanh gốc và tự dọn file tạm — chỉ giữ thư mục `<tên phim> Lồng Tiếng`.
 - 🧩 **Ghép full tập:** Chọn thư mục phim, app nối toàn bộ tập thành 1 file duy nhất bằng `ffmpeg concat -c copy` — không render lại, chỉ mất vài giây.
 - 💾 **Tự lưu toàn bộ thiết lập:** thư mục tải, nền tảng, nguồn giọng, giọng đọc, mức âm gốc/âm lồng, tốc độ đọc và các checkbox được khôi phục khi mở lại app.
 - 📦 **Kiến trúc Module hóa:** Dễ dàng tích hợp vào bot Telegram, FastAPI web service, hoặc crawler tự động.
@@ -263,7 +263,25 @@ Tuỳ chọn — **VieNeu-TTS local** với 25 giọng tiếng Việt, 48 kHz, k
 pip install -e ".[dubbing-vieneu]"
 ```
 
-VieNeu-TTS yêu cầu Python 3.10+; model được tải về lần đầu sử dụng. Đây là model mã nguồn mở Apache-2.0.
+Tuỳ chọn — **ZeroTTS local** (MIT, ONNX CPU, 8 giọng tiếng Việt):
+
+```bash
+pip install -e ".[dubbing-zerotts]"
+```
+
+Tuỳ chọn — **gTTS** (Google Translate TTS, miễn phí, cần mạng):
+
+```bash
+pip install -e ".[dubbing-gtts]"
+```
+
+Tuỳ chọn — **Google Cloud TTS** (cần file service-account JSON):
+
+```bash
+pip install -e ".[dubbing-google]"
+```
+
+VieNeu-TTS yêu cầu Python 3.10+; model được tải về lần đầu sử dụng. Đây là model mã nguồn mở Apache-2.0. ZeroTTS là model MIT, tải ~900 MB lần đầu.
 
 Lần đầu chạy chế độ **Chất lượng**, VietOCR sẽ tải model `vgg_transformer` (~100 MB) về `%TEMP%`.
 
@@ -273,8 +291,16 @@ Lần đầu chạy chế độ **Chất lượng**, VietOCR sẽ tải model `v
 | :--- | :---: | :--- |
 | **Edge TTS** | 2 giọng Việt | Online, nhẹ, không cần model |
 | **VieNeu-TTS** | 25 giọng preset | Local 48 kHz, hỗ trợ clone giọng, cần `vieneu` |
+| **ZeroTTS** | 8 giọng preset | Local ONNX CPU, MIT, tải model ~900 MB lần đầu |
+| **gTTS** | 1 giọng Việt | Miễn phí, cần mạng |
+| **ElevenLabs** | Theo tài khoản | Cần API key, chất lượng cao |
+| **OpenAI TTS** | 9 giọng | Cần API key |
+| **Google Cloud TTS** | 8 giọng Việt | Cần service-account JSON |
+| **Azure Speech** | 2 giọng Việt | Cần API key + region |
 
-> DramaAI **không** tích hợp `device.json`/`fix_shark` hay cơ chế vượt giới hạn thiết bị của CapCut. Các file đó gắn với tài khoản/thiết bị và không được phép phân phối công khai. Dùng Edge TTS hoặc VieNeu-TTS (mã nguồn mở) để có giọng đọc hợp lệ.
+Các API key/credentials được nhập trong tab **Lồng tiếng** và lưu vào `settings.json` trên máy bạn.
+
+> DramaAI **không** tích hợp `device.json`/`fix_shark` hay cơ chế vượt giới hạn thiết bị của CapCut. Các file đó gắn với tài khoản/thiết bị và không được phép phân phối công khai. Thay vào đó app hỗ trợ 8 nguồn giọng hợp lệ ở bảng trên (Edge, VieNeu, ZeroTTS, gTTS, ElevenLabs, OpenAI, Google Cloud, Azure).
 
 ### Đồng bộ mềm
 

@@ -132,10 +132,21 @@ Hello World!
     def test_tts_voice_catalog(self):
         self.assertIn("edge", dubbing.TTS_PROVIDERS)
         self.assertIn("vieneu", dubbing.TTS_PROVIDERS)
+        self.assertIn("zerotts", dubbing.TTS_PROVIDERS)
+        self.assertIn("gtts", dubbing.TTS_PROVIDERS)
+        self.assertIn("elevenlabs", dubbing.TTS_PROVIDERS)
+        self.assertIn("openai", dubbing.TTS_PROVIDERS)
+        self.assertIn("google", dubbing.TTS_PROVIDERS)
+        self.assertIn("azure", dubbing.TTS_PROVIDERS)
         self.assertEqual(len(dubbing.VIENEU_VOICES), 25)
         self.assertEqual(len(set(dubbing.VIENEU_VOICES)), 25)
         self.assertIn("Hải Đăng", dubbing.VIENEU_VOICES)
+        self.assertEqual(len(dubbing.ZEROTTS_VOICES), 8)
+        self.assertEqual(dubbing.ZEROTTS_VOICES[0][0], "maichi")
         self.assertEqual(len(dubbing.VI_VOICES), 2)
+        self.assertGreaterEqual(len(dubbing.OPENAI_VOICES), 5)
+        self.assertGreaterEqual(len(dubbing.GOOGLE_VOICES), 4)
+        self.assertGreaterEqual(len(dubbing.AZURE_VOICES), 2)
         import inspect
 
         params = inspect.signature(dubbing.run_batch).parameters
@@ -143,11 +154,27 @@ Hello World!
         self.assertIn("soft_timing", params)
         self.assertIn("natural_voice", params)
         self.assertIn("keep_temp", params)
+        self.assertIn("tts_config", params)
         self.assertEqual(
             dubbing.default_output_dir(r"C:\Phim AI\Yêu Đương Chẳng Bằng Đi Ăn Lẩu"),
             Path(r"C:\Phim AI\Yêu Đương Chẳng Bằng Đi Ăn Lẩu Lồng Tiếng"),
         )
         print("[OK] TTS voice catalog test passed")
+
+    def test_tts_preflight_errors(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            dubbing._preflight_provider("elevenlabs", {})
+        self.assertIn("ElevenLabs", str(ctx.exception))
+        with self.assertRaises(RuntimeError) as ctx:
+            dubbing._preflight_provider("openai", {"api_key": ""})
+        self.assertIn("OpenAI", str(ctx.exception))
+        with self.assertRaises(RuntimeError) as ctx:
+            dubbing._preflight_provider("azure", {"api_key": "x", "region": ""})
+        self.assertIn("Azure", str(ctx.exception))
+        with self.assertRaises(RuntimeError) as ctx:
+            dubbing._preflight_provider("google", {"credentials": "missing.json"})
+        self.assertIn("credentials", str(ctx.exception))
+        print("[OK] TTS preflight test passed")
 
     def test_merge_helpers(self):
         paths = [

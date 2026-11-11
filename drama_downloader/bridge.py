@@ -217,8 +217,14 @@ def cmd_dub(req):
     overwrite = bool(req.get("overwrite", False))
     ocr_mode = req.get("ocr_mode") or "quality"
     tts_provider = (req.get("tts_provider") or "edge").strip().lower()
-    if tts_provider not in ("edge", "vieneu"):
+    if tts_provider not in dubbing.TTS_PROVIDERS:
         raise ValueError(f"TTS provider không hợp lệ: {tts_provider}")
+    tts_config = {
+        "api_key": req.get("tts_api_key") or "",
+        "region": req.get("tts_region") or "",
+        "credentials": req.get("tts_credentials") or "",
+        "model": req.get("tts_model") or "",
+    }
     soft_timing = bool(req.get("soft_timing", False))
     natural_voice = bool(req.get("natural_voice", True))
     keep_temp = bool(req.get("keep_temp", False))
@@ -239,6 +245,7 @@ def cmd_dub(req):
         soft_timing=soft_timing,
         natural_voice=natural_voice,
         keep_temp=keep_temp,
+        tts_config=tts_config,
     )
     return 0
 

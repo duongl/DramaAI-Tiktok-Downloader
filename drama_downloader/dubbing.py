@@ -47,6 +47,12 @@ VI_VOICES = {
 TTS_PROVIDERS = {
     "edge": "Edge TTS (online)",
     "vieneu": "VieNeu-TTS (local, 48kHz)",
+    "zerotts": "ZeroTTS (local, 8 giọng)",
+    "gtts": "Google TTS — gTTS (online)",
+    "elevenlabs": "ElevenLabs (API key)",
+    "openai": "OpenAI TTS (API key)",
+    "google": "Google Cloud TTS (service account)",
+    "azure": "Azure Speech (API key)",
 }
 
 # 25 preset voices của VieNeu-TTS v3 Turbo (Apache-2.0).
@@ -78,11 +84,54 @@ VIENEU_VOICES = [
     "Quốc Tuấn",
 ]
 
+# 8 giọng preset của ZeroTTS (MIT, ONNX CPU).
+ZEROTTS_VOICES = [
+    ("maichi", "Mai Chi — nữ, kể chuyện"),
+    ("baotrang", "Bảo Trang — nữ, tin tức"),
+    ("kimoanh", "Kim Oanh — nữ, trung niên"),
+    ("hamy", "Hà My — nữ, hoạt hình"),
+    ("giahuy", "Gia Huy — nam, trầm ấm"),
+    ("huuduc", "Hữu Đức — nam, lớn tuổi"),
+    ("quangminh", "Quang Minh — nam, tin tức"),
+    ("tiendat", "Tiến Đạt — nam, bình luận"),
+]
+
+OPENAI_VOICES = [
+    "alloy",
+    "ash",
+    "coral",
+    "echo",
+    "fable",
+    "nova",
+    "onyx",
+    "sage",
+    "shimmer",
+]
+
+GOOGLE_VOICES = [
+    "vi-VN-Wavenet-A",
+    "vi-VN-Wavenet-B",
+    "vi-VN-Wavenet-C",
+    "vi-VN-Wavenet-D",
+    "vi-VN-Standard-A",
+    "vi-VN-Standard-B",
+    "vi-VN-Standard-C",
+    "vi-VN-Standard-D",
+]
+
+AZURE_VOICES = [
+    "vi-VN-HoaiMyNeural",
+    "vi-VN-NamMinhNeural",
+]
+
+ELEVENLABS_DEFAULT_VOICE = "21m00Tcm4TlvDq8ikWAM"  # Rachel
+
 _EASY_READER = None
 _RAPID_ENGINE = None
 _RAPID_ENGINE_LATIN = None
 _VIETOCR_PREDICTOR = None
 _VIENEU_ENGINE = None
+_ZEROTTS_ENGINE = None
 _BASE_WORDS: Optional[dict[str, str]] = None
 
 
@@ -234,6 +283,19 @@ def _get_vieneu_engine():
             ) from exc
         _VIENEU_ENGINE = Vieneu()
     return _VIENEU_ENGINE
+
+
+def _get_zerotts_engine():
+    global _ZEROTTS_ENGINE
+    if _ZEROTTS_ENGINE is None:
+        try:
+            from zerotts import ZeroTTS
+        except Exception as exc:
+            raise RuntimeError(
+                "ZeroTTS chưa cài. Chạy: pip install zerotts"
+            ) from exc
+        _ZEROTTS_ENGINE = ZeroTTS.from_pretrained("zeroweight-ai/ZeroTTS")
+    return _ZEROTTS_ENGINE
 
 
 def _ensure_latin_models() -> tuple[Path, Path]:
@@ -638,8 +700,15 @@ def _clean_speech_text(text: str) -> str:
 
 
 async def _tts_save(
-    text: str, voice: str, rate: int, path: Path, provider: str = "edge"
+    text: str,
+    voice: str,
+    rate: int,
+    path: Path,
+    provider: str = "edge",
+    config: Optional[dict[str, str]] = None,
 ) -> None:
+    config = config or {}
+
     if provider == "vieneu":
         engine = _get_vieneu_engine()
         audio = engine.infer(text, voice=voice)
@@ -647,10 +716,152 @@ async def _tts_save(
         _apply_tempo(path, rate)
         return
 
+    if provider == "zerotts":
+        engine = _get_zerotts_engine()
+        audio = engine.synthesize(text, voice=voice or None)
+        engine.save_audio(audio, str(path))
+        _apply_tempo(path, rate)
+        return
+
+    if provider == "gtts":
+        try:
+            from gtts import gTTS
+        except Exception as exc:
+            raise RuntimeError("gTTS chưa cài. Chạy: pip install gTTS") from exc
+        gTTS(text=text, lang=voice or "vi", slow=False).save(str(path))
+        _apply_tempo(path, rate)
+        return
+
+    if provider == "elevenlabs":
+        import requests
+
+        api_key = (config.get("api_key") or "").strip()
+        if not api_key:
+            raise RuntimeError("Thiếu ElevenLabs API key.")
+        response = requests.post(
+            f"https://api.elevenlabs.io/v1/text-to-speech/{voice}",
+            headers={"xi-api-key": api_key, "accept": "audio/mpeg"},
+            json={
+                "text": text,
+                "model_id": config.get("model") or "eleven_multilingual_v2",
+                "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+            },
+            timeout=180,
+        )
+        response.raise_for_status()
+        path.write_bytes(response.content)
+        _apply_tempo(path, rate)
+        return
+
+    if provider == "openai":
+        import requests
+
+        api_key = (config.get("api_key") or "").strip()
+        if not api_key:
+            raise RuntimeError("Thiếu OpenAI API key.")
+        response = requests.post(
+            "https://api.openai.com/v1/audio/speech",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "model": config.get("model") or "tts-1",
+                "voice": voice or "alloy",
+                "input": text,
+                "response_format": "mp3",
+            },
+            timeout=180,
+        )
+        response.raise_for_status()
+        path.write_bytes(response.content)
+        _apply_tempo(path, rate)
+        return
+
+    if provider == "google":
+        try:
+            from google.cloud import texttospeech
+        except Exception as exc:
+            raise RuntimeError(
+                "Chưa cài google-cloud-texttospeech. Chạy: "
+                "pip install google-cloud-texttospeech"
+            ) from exc
+        credentials = (config.get("credentials") or "").strip()
+        if not credentials or not Path(credentials).is_file():
+            raise RuntimeError("Thiếu file credentials JSON của Google Cloud.")
+        client = texttospeech.TextToSpeechClient.from_service_account_json(credentials)
+        response = client.synthesize_speech(
+            input=texttospeech.SynthesisInput(text=text),
+            voice=texttospeech.VoiceSelectionParams(language_code="vi-VN", name=voice),
+            audio_config=texttospeech.AudioConfig(
+                audio_encoding=texttospeech.AudioEncoding.MP3,
+                speaking_rate=max(0.25, min(4.0, 1.0 + rate / 100.0)),
+            ),
+        )
+        path.write_bytes(response.audio_content)
+        return
+
+    if provider == "azure":
+        import html
+
+        import requests
+
+        api_key = (config.get("api_key") or "").strip()
+        region = (config.get("region") or "").strip()
+        if not api_key or not region:
+            raise RuntimeError("Thiếu Azure API key hoặc region.")
+        ssml = (
+            "<speak version='1.0' xml:lang='vi-VN'>"
+            f"<voice name='{voice}'>"
+            f"<prosody rate='{rate:+d}%'>{html.escape(text)}</prosody>"
+            "</voice></speak>"
+        )
+        response = requests.post(
+            f"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1",
+            headers={
+                "Ocp-Apim-Subscription-Key": api_key,
+                "Content-Type": "application/ssml+xml",
+                "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
+            },
+            data=ssml.encode("utf-8"),
+            timeout=180,
+        )
+        response.raise_for_status()
+        path.write_bytes(response.content)
+        return
+
     import edge_tts
 
     communicate = edge_tts.Communicate(text, voice, rate=f"{rate:+d}%")
     await communicate.save(str(path))
+
+
+def _preflight_provider(
+    provider: str, config: Optional[dict[str, str]] = None
+) -> None:
+    """Fail fast with a clear message before processing a whole batch."""
+    config = config or {}
+    if provider == "vieneu":
+        _get_vieneu_engine()
+    elif provider == "zerotts":
+        _get_zerotts_engine()
+    elif provider == "gtts":
+        try:
+            import gtts  # noqa: F401
+        except Exception as exc:
+            raise RuntimeError("gTTS chưa cài. Chạy: pip install gTTS") from exc
+    elif provider == "elevenlabs":
+        if not (config.get("api_key") or "").strip():
+            raise RuntimeError("Thiếu ElevenLabs API key.")
+    elif provider == "openai":
+        if not (config.get("api_key") or "").strip():
+            raise RuntimeError("Thiếu OpenAI API key.")
+    elif provider == "google":
+        credentials = (config.get("credentials") or "").strip()
+        if not credentials or not Path(credentials).is_file():
+            raise RuntimeError("Thiếu file credentials JSON của Google Cloud.")
+    elif provider == "azure":
+        if not (config.get("api_key") or "").strip() or not (
+            config.get("region") or ""
+        ).strip():
+            raise RuntimeError("Thiếu Azure API key hoặc region.")
 
 
 def _apply_tempo(path: Path, rate: int) -> None:
@@ -692,11 +903,12 @@ def _tts_track(
     provider: str = "edge",
     soft_timing: bool = False,
     natural_voice: bool = True,
+    tts_config: Optional[dict[str, str]] = None,
 ) -> Optional[Path]:
     from pydub import AudioSegment
 
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_ext = ".wav" if provider == "vieneu" else ".mp3"
+    cache_ext = ".wav" if provider in ("vieneu", "zerotts") else ".mp3"
     track = AudioSegment.silent(duration=int(video_duration * 1000), frame_rate=44100)
     used = 0
     previous_cue_end = 0.0
@@ -712,7 +924,9 @@ def _tts_track(
         cache = cache_dir / f"{key}{cache_ext}"
         if not cache.is_file():
             try:
-                asyncio.run(_tts_save(speech, voice, rate, cache, provider))
+                asyncio.run(
+                    _tts_save(speech, voice, rate, cache, provider, tts_config)
+                )
             except Exception:
                 previous_cue_end = end
                 continue
@@ -736,7 +950,9 @@ def _tts_track(
                     cache2 = cache_dir / f"{key2}{cache_ext}"
                     if not cache2.is_file():
                         asyncio.run(
-                            _tts_save(speech, voice, faster, cache2, provider)
+                            _tts_save(
+                                speech, voice, faster, cache2, provider, tts_config
+                            )
                         )
                     segment = AudioSegment.from_file(cache2)
                 if len(segment) / 1000.0 > allowed:
@@ -821,6 +1037,7 @@ def dub_video(
     tts_provider: str = "edge",
     soft_timing: bool = False,
     natural_voice: bool = True,
+    tts_config: Optional[dict[str, str]] = None,
 ) -> None:
     if output.exists() and not overwrite:
         return
@@ -835,6 +1052,7 @@ def dub_video(
         provider=tts_provider,
         soft_timing=soft_timing,
         natural_voice=natural_voice,
+        tts_config=tts_config,
     )
     if track is None:
         raise RuntimeError("Không tạo được audio TTS.")
@@ -868,6 +1086,7 @@ def run_batch(
     soft_timing: bool = False,
     natural_voice: bool = True,
     keep_temp: bool = False,
+    tts_config: Optional[dict[str, str]] = None,
 ) -> None:
     videos = list_videos(folder)
     if not videos:
@@ -880,19 +1099,20 @@ def run_batch(
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     emit("dub_start", total=len(videos), folder=str(Path(folder)), output_dir=str(output_root))
-    if tts_provider == "vieneu":
+    if not ocr_only:
+        provider_label = TTS_PROVIDERS.get(tts_provider, tts_provider)
         emit(
             "dub_progress",
             index=1,
             name="",
             stage="tts",
             percent=0.0,
-            message="Đang khởi tạo VieNeu-TTS (lần đầu có thể tải model)...",
+            message=f"Đang chuẩn bị {provider_label}...",
         )
         try:
-            _get_vieneu_engine()
+            _preflight_provider(tts_provider, tts_config)
         except Exception as exc:
-            raise RuntimeError(f"VieNeu-TTS chưa sẵn sàng: {exc}") from exc
+            raise RuntimeError(str(exc)) from exc
     done = 0
     failed = 0
     started = time.time()
@@ -952,6 +1172,7 @@ def run_batch(
                 tts_provider=tts_provider,
                 soft_timing=soft_timing,
                 natural_voice=natural_voice,
+                tts_config=tts_config,
             )
             emit("dub_video_done", index=index, name=video.name, output=str(output_video), skipped=False)
             done += 1
