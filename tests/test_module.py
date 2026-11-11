@@ -13,7 +13,11 @@ from pathlib import Path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import drama_downloader as dd
 from drama_downloader import dubbing
-from drama_downloader.downloader import sanitize_filename, series_folder_name
+from drama_downloader.downloader import (
+    DramaDownloader,
+    sanitize_filename,
+    series_folder_name,
+)
 
 
 class TestDramaDownloader(unittest.TestCase):
@@ -79,6 +83,27 @@ Hello World!
         FakeSeries.name = ""
         self.assertEqual(series_folder_name(FakeSeries()), "dramabox 123")
         print("[OK] Series folder naming test passed")
+
+    def test_series_output_dir(self):
+        class FakeSeries:
+            name = "Yêu Đương Chẳng Bằng Đi Ăn Lẩu"
+            series_id = "dramabox:123"
+
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            downloader = DramaDownloader(output_dir=str(base))
+            self.assertEqual(
+                Path(downloader.series_output_dir(FakeSeries())),
+                base / "Yêu Đương Chẳng Bằng Đi Ăn Lẩu",
+            )
+
+            series_folder = base / "Yêu Đương Chẳng Bằng Đi Ăn Lẩu"
+            series_folder.mkdir()
+            nested = DramaDownloader(output_dir=str(series_folder))
+            self.assertEqual(
+                Path(nested.series_output_dir(FakeSeries())), series_folder
+            )
+        print("[OK] Series output directory test passed")
 
     def test_dubbing_helpers(self):
         self.assertEqual(dubbing._strip_accents("Đẹp"), "Dep")

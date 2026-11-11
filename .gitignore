@@ -38,3 +38,6 @@ share/python-wheels/
 /downloads/
 *.part
 /settings.json
+
+# Local promotional screenshots (not part of the app build)
+/ad_screenshots/

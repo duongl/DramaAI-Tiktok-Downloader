@@ -44,6 +44,7 @@ run_gui.bat
 - Chọn tất cả, bỏ chọn, chỉ chọn tập có stream, lọc theo tên/số tập.
 - Nhập dải tập kiểu `1-10,15,20`.
 - Tải song song nhiều tập, chọn số luồng 1–8.
+- Mỗi series tự động lưu vào thư mục con đúng tên phim, không lẫn với series khác.
 - Thanh tiến trình tổng và tiến trình từng tập.
 - Hủy giữa chừng (file `.part` có thể còn lại).
 - Chọn thư mục tải bằng hộp thoại Windows, mở thư mục sau khi tải.

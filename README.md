@@ -43,6 +43,7 @@ Dự án được tối ưu hóa cho Python, tích hợp sẵn các thuật toá
 - ⚡ **Auto-Detection Router:** Tự động nhận diện nền tảng chỉ bằng liên kết phim (URL) hoặc Series ID.
 - 🔓 **Bypass DRM & Payload Obfuscation:** Tích hợp bộ giải mã Spade URL (ByteDance AES-128-CBC) và ký số RSA-SHA256 chuẩn hóa cho DramaBox.
 - 🚀 **Tải video đa luồng song song:** Tải đồng thời nhiều tập phim với cơ chế phân đoạn (chunk streaming) và tự động đổi tên tệp an toàn.
+- 📁 **Tự động phân thư mục theo series:** Mỗi phim được lưu vào thư mục con đúng tên series (ví dụ `Download Phim AI/Yêu Đương Chẳng Bằng Đi Ăn Lẩu/EP01 - ...mp4`), không lẫn với phim khác.
 - 🎯 **Tự động bóc tách & chuyển đổi phụ đề:** Tự động tải phụ đề đi kèm tập phim và chuyển đổi chuẩn hóa WebVTT sang SubRip (.srt) tương thích mọi thiết bị.
 - 💻 **Giao diện dòng lệnh (CLI) trực quan:** Xem trước danh sách tập, phân loại tập khóa/mở khóa (`[FREE] [HAS STREAM]`), tải theo dải tập (ví dụ: `1-10,15,20`).
 - 🎙️ **Lồng tiếng hàng loạt:** OCR phụ đề Việt có sẵn trong video, tạo giọng đọc bằng edge-tts và trộn với âm thanh gốc thành MP4 + file SRT.
@@ -133,6 +134,18 @@ python -m drama_downloader download "https://www.dramaboxdb.com/movie/4200000123
 # Tải toàn bộ series
 python -m drama_downloader download "https://netshort.com/drama/12345678" -c 4 -o ./downloads
 ```
+
+Mỗi series tự động nằm trong một thư mục con đúng tên phim:
+
+```text
+downloads/
+└── Yêu Đương Chẳng Bằng Đi Ăn Lẩu/
+    ├── EP01 - 第一集.mp4
+    ├── EP02 - 第二集.mp4
+    └── ...
+```
+
+Nếu thư mục `-o` đã trùng tên series, app ghi trực tiếp vào đó thay vì lồng thêm một lớp thư mục.
 
 ### 4. Duyệt danh mục phim ngắn (`catalog`)
 ```bash

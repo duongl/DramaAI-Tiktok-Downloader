@@ -121,7 +121,18 @@ class DramaDownloader:
 
     def series_output_dir(self, series: Series) -> str:
         """Directory that contains all episodes of a series."""
-        return os.path.join(self.output_dir, series_folder_name(series))
+        return self._series_dir(series_folder_name(series))
+
+    def _series_dir(self, series_name: str) -> str:
+        """Return the series folder, without nesting it twice.
+
+        If the user already picked a folder whose name matches the series, the
+        episodes are stored directly there instead of ``<series>/<series>``.
+        """
+        folder = sanitize_filename(series_name)
+        if os.path.basename(os.path.normpath(self.output_dir)).casefold() == folder.casefold():
+            return self.output_dir
+        return os.path.join(self.output_dir, folder)
 
     def download_episode(
         self,
@@ -136,7 +147,7 @@ class DramaDownloader:
 
         folder = self.output_dir
         if series_name:
-            folder = os.path.join(self.output_dir, sanitize_filename(series_name))
+            folder = self._series_dir(series_name)
             os.makedirs(folder, exist_ok=True)
 
         ep_prefix = f"EP{episode.num:02d}"
