@@ -156,13 +156,22 @@ python -m drama_downloader catalog dramabox --page 1 -q "Love"
 
 ## 🖥️ Giao diện Desktop (Rust GUI)
 
-![DramaAI Tiktok Downloader GUI](gui/screenshot.png)
+Bản GUI native viết bằng Rust (egui/eframe) cho Windows, dùng lõi Python qua bridge JSON.
 
 <p align="center">
-  <img src="gui/screenshot_donate.png" alt="Tab Donate với VietQR" width="72%" />
+  <img src="gui/screenshots/tai-phim.png" alt="Tab Tải phim" width="49%" />
+  <img src="gui/screenshots/danh-muc.png" alt="Tab Danh mục" width="49%" />
+</p>
+<p align="center">
+  <img src="gui/screenshots/long-tieng.png" alt="Tab Lồng tiếng" width="49%" />
+  <img src="gui/screenshots/nhat-ky.png" alt="Tab Nhật ký" width="49%" />
+</p>
+<p align="center">
+  <img src="gui/screenshots/donate.png" alt="Tab Donate với VietQR" width="49%" />
+  <img src="gui/screenshots/nen-tang.png" alt="Chọn nền tảng hỗ trợ" width="49%" />
 </p>
 
-Bản GUI native viết bằng Rust (egui/eframe) cho Windows, dùng lõi Python qua bridge JSON:
+Các tab chính: **Tải phim**, **Danh mục**, **Lồng tiếng**, **Donate**, **Nhật ký**.
 
 - Xem thông tin phim, chọn tập bằng checkbox, lọc và nhập dải tập.
 - Tải song song, thanh tiến trình từng tập, hủy giữa chừng.
@@ -418,8 +427,7 @@ gui/                     # Rust desktop GUI (egui/eframe)
 ├── tools/dlltool_shim.rs # Shim cho toolchain windows-gnu
 ├── tools/make_assets.py # Tạo icon/banner
 ├── build.ps1            # Script build release
-├── screenshot.png       # Ảnh giao diện
-├── screenshot_donate.png# Ảnh tab Donate
+├── screenshots/         # Ảnh các tab: Tải phim, Danh mục, Lồng tiếng, Donate, Nhật ký
 └── README.md            # Hướng dẫn GUI
 
 run_gui.bat                    # Mở GUI nhanh

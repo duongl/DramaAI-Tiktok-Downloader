@@ -1,8 +1,17 @@
 # DramaAI Tiktok Downloader — Rust GUI
 
-![Giao diện DramaAI Tiktok Downloader](screenshot.png)
-
-![Tab Donate với VietQR](screenshot_donate.png)
+<p align="center">
+  <img src="screenshots/tai-phim.png" alt="Tab Tải phim" width="49%" />
+  <img src="screenshots/danh-muc.png" alt="Tab Danh mục" width="49%" />
+</p>
+<p align="center">
+  <img src="screenshots/long-tieng.png" alt="Tab Lồng tiếng" width="49%" />
+  <img src="screenshots/nhat-ky.png" alt="Tab Nhật ký" width="49%" />
+</p>
+<p align="center">
+  <img src="screenshots/donate.png" alt="Tab Donate với VietQR" width="49%" />
+  <img src="screenshots/nen-tang.png" alt="Chọn nền tảng hỗ trợ" width="49%" />
+</p>
 
 Giao diện desktop native viết bằng **Rust + egui/eframe**. Phần giao diện và quản lý tiến trình nằm trong Rust; phần bóc tách dữ liệu, giải mã và tải file dùng lại lõi Python hiện có thông qua một bridge JSON nhỏ.
 
