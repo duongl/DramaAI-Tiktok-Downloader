@@ -2505,7 +2505,7 @@ impl eframe::App for App {
                 ui.heading(egui::RichText::new("DramaAI").color(BRAND_PINK));
                 ui.heading("Tiktok Downloader");
                 ui.label(
-                    egui::RichText::new("Rust GUI • Python core • v1.3.1")
+                    egui::RichText::new("Rust GUI • Python core • v1.3.2")
                         .small()
                         .weak(),
                 );
@@ -2813,6 +2813,17 @@ fn install_fonts(ctx: &egui::Context) {
         }
     }
 
+    // Consolas hỗ trợ tiếng Việt, dùng cho tab Nhật ký (monospace).
+    if let Ok(bytes) = std::fs::read(r"C:\Windows\Fonts\consola.ttf") {
+        fonts.font_data.insert(
+            "mono-ui".to_owned(),
+            egui::FontData::from_owned(bytes).into(),
+        );
+        if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
+            family.push("mono-ui".to_owned());
+        }
+    }
+
     if let Ok(bytes) = std::fs::read(r"C:\Windows\Fonts\msyh.ttc") {
         fonts.font_data.insert(
             "cjk-ui".to_owned(),
@@ -2823,6 +2834,13 @@ fn install_fonts(ctx: &egui::Context) {
         }
         if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
             family.push("cjk-ui".to_owned());
+        }
+    }
+
+    // Fallback cuối cho monospace: Segoe UI (đủ dấu tiếng Việt).
+    if fonts.font_data.contains_key("latin-ui") {
+        if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
+            family.push("latin-ui".to_owned());
         }
     }
 
@@ -3291,7 +3309,7 @@ fn main() -> eframe::Result {
         .with_inner_size([960.0, 680.0])
         .with_min_inner_size([820.0, 560.0])
         .with_resizable(true)
-        .with_title("DramaAI Tiktok Downloader v1.3.1");
+        .with_title("DramaAI Tiktok Downloader v1.3.2");
     if let Some(icon) = load_window_icon() {
         viewport = viewport.with_icon(std::sync::Arc::new(icon));
     }
@@ -3303,7 +3321,7 @@ fn main() -> eframe::Result {
     };
 
     eframe::run_native(
-        "DramaAI Tiktok Downloader v1.3.1",
+        "DramaAI Tiktok Downloader v1.3.2",
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )
