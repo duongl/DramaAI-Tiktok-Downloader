@@ -6,10 +6,14 @@ Verification test suite for drama_downloader package.
 
 import os
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import drama_downloader as dd
+from drama_downloader import dubbing
+from drama_downloader.downloader import sanitize_filename, series_folder_name
 
 
 class TestDramaDownloader(unittest.TestCase):
@@ -59,6 +63,46 @@ Hello World!
         self.assertIn("Hello World!", srt)
         self.assertIn("Welcome to DramaAI", srt)
         print("[OK] VTT to SRT subtitle conversion test passed")
+
+    def test_series_folder_names(self):
+        self.assertEqual(sanitize_filename('Phim: A/B?'), "Phim A B")
+        self.assertEqual(sanitize_filename("CON"), "_CON")
+        self.assertEqual(sanitize_filename("   "), "video")
+
+        class FakeSeries:
+            name = "Yêu Đương Chẳng Bằng Đi Ăn Lẩu"
+            series_id = "dramabox:123"
+
+        self.assertEqual(
+            series_folder_name(FakeSeries()), "Yêu Đương Chẳng Bằng Đi Ăn Lẩu"
+        )
+        FakeSeries.name = ""
+        self.assertEqual(series_folder_name(FakeSeries()), "dramabox 123")
+        print("[OK] Series folder naming test passed")
+
+    def test_dubbing_helpers(self):
+        self.assertEqual(dubbing._strip_accents("Đẹp"), "Dep")
+        self.assertEqual(dubbing._normalize_text("  <i>Xin chào</i>  "), "Xin chào")
+
+        cues = [(1.5, 3.0, "Xin chào"), (3.5, 5.25, "Tạm biệt")]
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            srt_path = root / "sample.srt"
+            dubbing._write_srt(cues, srt_path)
+            parsed = dubbing._parse_srt(srt_path.read_text(encoding="utf-8"))
+            self.assertEqual(len(parsed), 2)
+            self.assertAlmostEqual(parsed[0][0], 1.5)
+            self.assertAlmostEqual(parsed[1][1], 5.25)
+            self.assertEqual(parsed[1][2], "Tạm biệt")
+
+            (root / "EP01.mp4").write_bytes(b"")
+            (root / "EP02.MKV").write_bytes(b"")
+            (root / "note.txt").write_text("x", encoding="utf-8")
+            self.assertEqual(
+                [path.name for path in dubbing.list_videos(root)],
+                ["EP01.mp4", "EP02.MKV"],
+            )
+        print("[OK] Dubbing helper tests passed")
 
 
 if __name__ == "__main__":

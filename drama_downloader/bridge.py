@@ -122,7 +122,12 @@ def cmd_download(req):
         save_vtt=save_vtt,
     )
 
-    emit("start", total=len(targets), output_dir=str(downloader.output_dir))
+    emit(
+        "start",
+        total=len(targets),
+        output_dir=str(downloader.output_dir),
+        series_dir=downloader.series_output_dir(series),
+    )
 
     last_emit = {}
     started_at = time.time()
@@ -193,6 +198,39 @@ def cmd_catalog(req):
     return 0
 
 
+def cmd_dub(req):
+    from drama_downloader import dubbing
+
+    folder = (req.get("folder") or "").strip()
+    if not folder or not Path(folder).is_dir():
+        raise ValueError("Thư mục video không hợp lệ.")
+
+    output = (req.get("output") or "").strip() or str(Path(folder) / "LongTieng")
+    voice = (req.get("voice") or "vi-VN-HoaiMyNeural").strip()
+    original_volume = max(0, min(100, int(req.get("original_volume") or 15)))
+    tts_volume = max(0, min(200, int(req.get("tts_volume") or 100)))
+    rate = max(-50, min(50, int(req.get("rate") or 0)))
+    use_sidecar = bool(req.get("use_sidecar", True))
+    ocr_only = bool(req.get("ocr_only", False))
+    overwrite = bool(req.get("overwrite", False))
+    ocr_mode = req.get("ocr_mode") or "quality"
+
+    dubbing.run_batch(
+        folder=folder,
+        output_dir=output,
+        voice=voice,
+        original_volume=original_volume,
+        tts_volume=tts_volume,
+        rate=rate,
+        use_sidecar=use_sidecar,
+        ocr_only=ocr_only,
+        overwrite=overwrite,
+        emit=emit,
+        ocr_mode=ocr_mode,
+    )
+    return 0
+
+
 def main():
     raw = sys.stdin.buffer.read().decode("utf-8", errors="replace")
     try:
@@ -209,6 +247,8 @@ def main():
             return cmd_download(req)
         if command == "catalog":
             return cmd_catalog(req)
+        if command == "dub":
+            return cmd_dub(req)
         raise ValueError(f"Lệnh không hỗ trợ: {command!r}")
     except Exception as exc:
         emit(

@@ -26,6 +26,8 @@ Dự án được tối ưu hóa cho Python, tích hợp sẵn các thuật toá
 - [Nền tảng hỗ trợ](#-nền-tảng-hỗ-trợ)
 - [Cài đặt](#-cài-đặt)
 - [Sử dụng dòng lệnh (CLI)](#-sử-dụng-dòng-lệnh-cli)
+- [Giao diện Desktop (Rust GUI)](#️-giao-diện-desktop-rust-gui)
+- [Lồng tiếng hàng loạt (OCR + TTS)](#️-lồng-tiếng-hàng-loạt-ocr--tts)
 - [Sử dụng trong mã nguồn Python (API)](#-sử-dụng-trong-mã-nguồn-python-api)
 - [Cơ chế xử lý Phụ đề (SRT / VTT Engine)](#-cơ-chế-xử-lý-phụ-đề-srt--vtt-engine)
 - [Kiến trúc kỹ thuật & Mật mã học](#-kiến-trúc-kỹ-thuật--mật-mã-học)
@@ -43,6 +45,7 @@ Dự án được tối ưu hóa cho Python, tích hợp sẵn các thuật toá
 - 🚀 **Tải video đa luồng song song:** Tải đồng thời nhiều tập phim với cơ chế phân đoạn (chunk streaming) và tự động đổi tên tệp an toàn.
 - 🎯 **Tự động bóc tách & chuyển đổi phụ đề:** Tự động tải phụ đề đi kèm tập phim và chuyển đổi chuẩn hóa WebVTT sang SubRip (.srt) tương thích mọi thiết bị.
 - 💻 **Giao diện dòng lệnh (CLI) trực quan:** Xem trước danh sách tập, phân loại tập khóa/mở khóa (`[FREE] [HAS STREAM]`), tải theo dải tập (ví dụ: `1-10,15,20`).
+- 🎙️ **Lồng tiếng hàng loạt:** OCR phụ đề Việt có sẵn trong video, tạo giọng đọc bằng edge-tts và trộn với âm thanh gốc thành MP4 + file SRT.
 - 📦 **Kiến trúc Module hóa:** Dễ dàng tích hợp vào bot Telegram, FastAPI web service, hoặc crawler tự động.
 
 ---
@@ -151,6 +154,7 @@ Bản GUI native viết bằng Rust (egui/eframe) cho Windows, dùng lõi Python
 - Xem thông tin phim, chọn tập bằng checkbox, lọc và nhập dải tập.
 - Tải song song, thanh tiến trình từng tập, hủy giữa chừng.
 - Duyệt danh mục, xem nhật ký và tab **Donate** với mã VietQR.
+- Tab **Lồng tiếng** xử lý hàng loạt cả thư mục phim: OCR phụ đề Việt → TTS → trộn âm thanh.
 - Giao diện hồng–cam, cửa sổ tự căn giữa, icon riêng và shortcut Desktop.
 - Tự lưu thư mục tải, số luồng, tuỳ chọn VTT và URL gần nhất cho lần mở sau.
 
@@ -194,6 +198,73 @@ Script tự động:
 Tuỳ chọn: `-DryRun`, `-SkipBuild`, `-NoPush`.
 
 Xem chi tiết tại [`gui/README.md`](gui/README.md).
+
+---
+
+## 🎙️ Lồng tiếng hàng loạt (OCR + TTS)
+
+Tab **Lồng tiếng** nhận vào **một thư mục phim** (ví dụ `...\Yêu Đương Chẳng Bằng Đi Ăn Lẩu`) và xử lý mọi video bên trong:
+
+1. Đọc phụ đề tiếng Việt đã chèn cứng (hardsub) trong video bằng OCR.
+2. Tạo giọng đọc tiếng Việt bằng `edge-tts`.
+3. Trộn giọng đọc với âm thanh gốc (có thể giảm âm gốc về 0–100%).
+4. Xuất MP4 đã lồng tiếng + file `.srt` để kiểm tra/chỉnh sửa.
+
+> Chỉ dùng cho video bạn sở hữu hoặc có quyền xử lý.
+
+### Cài đặt thêm
+
+Yêu cầu **ffmpeg** có trong `PATH`. Sau đó:
+
+```bash
+pip install -e ".[dubbing]"
+
+# Windows: bản torch CPU nhỏ hơn nhiều so với bản CUDA
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+```
+
+Tuỳ chọn — EasyOCR làm fallback nếu VietOCR lỗi:
+
+```bash
+pip install -e ".[dubbing-easyocr]"
+```
+
+Lần đầu chạy chế độ **Chất lượng**, VietOCR sẽ tải model `vgg_transformer` (~100 MB) về `%TEMP%`.
+
+### Quy trình trên GUI
+
+1. Mở tab **Lồng tiếng**.
+2. Chọn **Thư mục video** → GUI báo số video tìm thấy.
+3. Chọn **Thư mục xuất** (mặc định `<thư mục video>/LongTieng`).
+4. Chọn giọng **Nữ — Hoài My** hoặc **Nam — Nam Minh**, chỉnh âm gốc/âm lồng/tốc độ đọc.
+5. Bấm **Bắt đầu lồng tiếng**. Có thể **Hủy** giữa chừng.
+
+### Chế độ OCR
+
+| Chế độ | Công nghệ | Ưu điểm | Nhược điểm |
+| :--- | :--- | :--- | :--- |
+| **Chất lượng** (mặc định) | RapidOCR detect dòng + VietOCR đọc dấu | Dấu tiếng Việt chính xác, giữ khoảng cách từ | Chậm hơn (model torch CPU) |
+| **Nhanh** | RapidOCR Latin | Nhanh, nhẹ | Thường thiếu dấu, chỉ nên dùng để thử |
+
+### Ưu tiên SRT/VTT có sẵn
+
+Nếu nền tảng tải kèm phụ đề, hãy bật **Lưu file .vtt gốc** ở tab Tải phim. Tab Lồng tiếng sẽ tự dùng `.srt`/`.vtt` nằm cạnh video hoặc trong `_phude` thay vì OCR (khi bật **Ưu tiên SRT/VTT có sẵn**). Như vậy nhanh hơn và không có lỗi OCR.
+
+### Kết quả
+
+```
+LongTieng/
+├── EP01.mp4            # video đã lồng tiếng
+├── EP02.mp4
+├── _phude/
+│   ├── EP01.srt        # phụ đề OCR (xem/sửa được)
+│   └── EP02.srt
+└── _tts_cache/         # cache giọng đọc, có thể xoá
+```
+
+Muốn sửa câu chữ: mở file trong `_phude`, chỉnh lại, rồi chạy lại với **Ưu tiên SRT/VTT có sẵn** và **Ghi đè file đã có**. Chế độ **Chỉ tạo SRT** giúp tạo phụ đề trước mà chưa cần TTS.
+
+Thời gian tham khảo trên CPU: video 20 giây mất ~1,5 phút ở chế độ Chất lượng; video 2 phút có thể mất 2–5 phút. Cả bộ 60 tập nên chạy qua đêm.
 
 ---
 

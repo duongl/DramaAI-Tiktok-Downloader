@@ -2,13 +2,31 @@ from setuptools import setup, find_packages
 
 setup(
     name="dramaai-tiktok-downloader",
-    version="1.1.4",
+    version="1.1.5",
     description="DramaAI Tiktok Downloader - Multi-Platform Short Drama Extractor and Downloader Module",
     packages=find_packages(),
     install_requires=[
         "requests>=2.28.0",
         "cryptography>=41.0.0",
     ],
+    extras_require={
+        # Batch OCR hardsub + Vietnamese TTS + audio mix (tab "Lồng tiếng").
+        # ffmpeg must be available on PATH. VietOCR downloads its model on first use.
+        "dubbing": [
+            "edge-tts>=7.0.0",
+            "pydub>=0.25.1",
+            "numpy>=1.24.0",
+            "opencv-python>=4.8.0",
+            "rapidocr-onnxruntime>=1.3.0",
+            "vietocr>=0.3.13",
+            "wordfreq>=3.1.1",
+            "setuptools<81",
+        ],
+        # Optional fallback OCR when VietOCR is unavailable.
+        "dubbing-easyocr": [
+            "easyocr>=1.7.0",
+        ],
+    },
     entry_points={
         "console_scripts": [
             "dramaai=drama_downloader.cli:main",

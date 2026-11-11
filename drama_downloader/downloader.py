@@ -34,10 +34,32 @@ class DownloadProgress:
         return 0.0
 
 
+_WINDOWS_RESERVED = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+
 def sanitize_filename(name: str) -> str:
-    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", name)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    return cleaned[:100] if cleaned else "video"
+    """Return a Windows-safe file/folder name while keeping Unicode titles."""
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", str(name or ""))
+    cleaned = re.sub(r"\s+", " ", cleaned).strip().rstrip(" .")
+    if not cleaned:
+        return "video"
+    cleaned = cleaned[:100].rstrip(" .")
+    if cleaned.split(".", 1)[0].upper() in _WINDOWS_RESERVED:
+        cleaned = "_" + cleaned
+    return cleaned or "video"
+
+
+def series_folder_name(series: "Series") -> str:
+    """Folder name used for all episodes of a series."""
+    label = (series.name or "").strip() or (series.series_id or "").strip() or "video"
+    return sanitize_filename(label)
 
 
 def vtt_to_srt(vtt_text: str) -> str:
@@ -96,6 +118,10 @@ class DramaDownloader:
         self.http = client or http
         self.save_vtt = save_vtt
         os.makedirs(self.output_dir, exist_ok=True)
+
+    def series_output_dir(self, series: Series) -> str:
+        """Directory that contains all episodes of a series."""
+        return os.path.join(self.output_dir, series_folder_name(series))
 
     def download_episode(
         self,
@@ -195,6 +221,7 @@ class DramaDownloader:
             target_episodes = [ep for ep in target_episodes if ep.num in episodes_range]
 
         completed_paths = []
+        folder_name = series_folder_name(series)
 
         with ThreadPoolExecutor(max_workers=self.concurrency) as executor:
             futures = {}
@@ -204,7 +231,7 @@ class DramaDownloader:
                 progress_cb = None
                 if on_episode_progress:
                     progress_cb = lambda p, _ep=ep: on_episode_progress(_ep, p)
-                fut = executor.submit(self.download_episode, ep, series.name, progress_cb)
+                fut = executor.submit(self.download_episode, ep, folder_name, progress_cb)
                 futures[fut] = ep
 
             for fut in as_completed(futures):

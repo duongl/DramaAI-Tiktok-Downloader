@@ -26,6 +26,7 @@ Yêu cầu:
 
 - Python 3.8+ trên `PATH` và đã cài package (`pip install -e .`).
 - File `drama_downloader/bridge.py` nằm trong repo.
+- Muốn dùng tab **Lồng tiếng**: cài thêm `pip install -e ".[dubbing]"`, torch CPU và ffmpeg trong `PATH`.
 - Không cần Rust nếu chỉ chạy bản đã build.
 
 Nếu Python không nằm trên `PATH`, đặt biến môi trường `DRAMA_PYTHON`:
@@ -47,6 +48,7 @@ run_gui.bat
 - Hủy giữa chừng (file `.part` có thể còn lại).
 - Chọn thư mục tải bằng hộp thoại Windows, mở thư mục sau khi tải.
 - Tab **Danh mục** để duyệt phim (DramaBox và ShortMax).
+- Tab **Lồng tiếng**: chọn cả thư mục phim, OCR phụ đề Việt có sẵn, tạo TTS và trộn với âm thanh gốc.
 - Tab **Donate** với mã VietQR, thông tin Vietcombank và nút sao chép nhanh.
 - Tab **Nhật ký** ghi lại từng bước và lỗi.
 - Giao diện tông hồng–cam lấy cảm hứng từ DramaBox, cửa sổ tự căn giữa khi mở.
@@ -92,6 +94,17 @@ Các event tải:
 {"event": "episode_done", "num": 1, "path": "..."}
 {"event": "episode_error", "num": 1, "message": "..."}
 {"event": "finished", "ok": 10, "failed": 0, "elapsed": 12.3}
+```
+
+Các event lồng tiếng:
+
+```json
+{"event": "dub_start", "total": 60, "folder": "...", "output_dir": "..."}
+{"event": "dub_video_start", "index": 1, "total": 60, "name": "EP01.mp4"}
+{"event": "dub_progress", "index": 1, "name": "EP01.mp4", "stage": "ocr", "percent": 42.0, "message": "OCR 42/112"}
+{"event": "dub_video_done", "index": 1, "name": "EP01.mp4", "output": "...", "skipped": false}
+{"event": "dub_video_error", "index": 1, "name": "EP01.mp4", "message": "..."}
+{"event": "dub_finished", "done": 60, "failed": 0, "total": 60, "elapsed": 8231.5}
 ```
 
 ## Build từ source

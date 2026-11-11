@@ -140,6 +140,12 @@ if (-not $SkipBuild) {
     if ($LASTEXITCODE -ne 0) {
         throw "cargo test failed"
     }
+
+    Write-Host "Running Python tests..." -ForegroundColor Cyan
+    & python -X utf8 -m unittest discover -s tests
+    if ($LASTEXITCODE -ne 0) {
+        throw "Python tests failed"
+    }
 } else {
     Write-Host "Skipping build/test (-SkipBuild)." -ForegroundColor Yellow
 }

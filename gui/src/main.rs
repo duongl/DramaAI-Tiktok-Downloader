@@ -23,6 +23,11 @@ const TEXT_MAIN: egui::Color32 = egui::Color32::from_rgb(247, 244, 250);
 const TEXT_FADE: egui::Color32 = egui::Color32::from_rgb(214, 208, 220);
 const LINK_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 188, 150);
 
+const DUB_VOICES: &[(&str, &str)] = &[
+    ("vi-VN-HoaiMyNeural", "Nữ — Hoài My"),
+    ("vi-VN-NamMinhNeural", "Nam — Nam Minh"),
+];
+
 const PLATFORMS: &[(&str, &str)] = &[
     ("", "Tự động nhận diện"),
     ("dramabox", "DramaBox"),
@@ -42,6 +47,7 @@ const PLATFORMS: &[(&str, &str)] = &[
 enum Tab {
     Download,
     Catalog,
+    Dubbing,
     Donate,
     Log,
 }
@@ -51,6 +57,7 @@ impl Tab {
         match self {
             Tab::Download => "Tải phim",
             Tab::Catalog => "Danh mục",
+            Tab::Dubbing => "Lồng tiếng",
             Tab::Donate => "Donate",
             Tab::Log => "Nhật ký",
         }
@@ -63,6 +70,7 @@ enum Busy {
     Info,
     Download,
     Catalog,
+    Dubbing,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -201,6 +209,25 @@ struct App {
     catalog_items: Vec<CatalogItem>,
     catalog_total: usize,
 
+    dub_folder: String,
+    dub_output: String,
+    dub_voice: String,
+    dub_original_volume: u32,
+    dub_tts_volume: u32,
+    dub_rate: i32,
+    dub_use_sidecar: bool,
+    dub_overwrite: bool,
+    dub_ocr_only: bool,
+    dub_ocr_mode: String,
+    dub_video_count: usize,
+    dub_total: usize,
+    dub_done: usize,
+    dub_failed: usize,
+    dub_current: String,
+    dub_progress: f32,
+    dub_stage: String,
+    dub_finished: bool,
+
     donate_texture: Option<egui::TextureHandle>,
 
     child: Option<Child>,
@@ -236,6 +263,7 @@ impl App {
             .as_str()
         {
             "catalog" => Tab::Catalog,
+            "dubbing" | "tts" => Tab::Dubbing,
             "donate" => Tab::Donate,
             "log" => Tab::Log,
             _ => Tab::Download,
@@ -279,6 +307,24 @@ impl App {
             catalog_page: 1,
             catalog_items: Vec::new(),
             catalog_total: 0,
+            dub_folder: String::new(),
+            dub_output: String::new(),
+            dub_voice: DUB_VOICES[0].0.to_owned(),
+            dub_original_volume: 15,
+            dub_tts_volume: 100,
+            dub_rate: 0,
+            dub_use_sidecar: true,
+            dub_overwrite: false,
+            dub_ocr_only: false,
+            dub_ocr_mode: "quality".to_owned(),
+            dub_video_count: 0,
+            dub_total: 0,
+            dub_done: 0,
+            dub_failed: 0,
+            dub_current: String::new(),
+            dub_progress: 0.0,
+            dub_stage: String::new(),
+            dub_finished: false,
             donate_texture: None,
             child: None,
             rx: None,
@@ -431,10 +477,72 @@ impl App {
         }
     }
 
+    fn start_dubbing(&mut self, ctx: &egui::Context) {
+        if self.busy != Busy::Idle {
+            return;
+        }
+        let folder = self.dub_folder.trim().to_owned();
+        if !std::path::Path::new(&folder).is_dir() {
+            self.error = Some("Chọn thư mục chứa video trước.".to_owned());
+            return;
+        }
+        let count = count_videos(&folder);
+        if count == 0 {
+            self.error = Some("Không tìm thấy video trong thư mục.".to_owned());
+            return;
+        }
+        let output = if self.dub_output.trim().is_empty() {
+            std::path::Path::new(&folder)
+                .join("LongTieng")
+                .display()
+                .to_string()
+        } else {
+            self.dub_output.trim().to_owned()
+        };
+
+        self.error = None;
+        self.dub_total = count;
+        self.dub_done = 0;
+        self.dub_failed = 0;
+        self.dub_current.clear();
+        self.dub_progress = 0.0;
+        self.dub_stage.clear();
+        self.dub_finished = false;
+        self.busy = Busy::Dubbing;
+        self.status = format!("Đang lồng tiếng 0/{count} video...");
+        self.push_log(format!(
+            "Bắt đầu lồng tiếng {count} video từ {folder} (OCR: {}, gốc {}%, TTS {}%)",
+            self.dub_ocr_mode, self.dub_original_volume, self.dub_tts_volume
+        ));
+
+        let request = json!({
+            "cmd": "dub",
+            "folder": folder,
+            "output": output,
+            "voice": self.dub_voice,
+            "original_volume": self.dub_original_volume,
+            "tts_volume": self.dub_tts_volume,
+            "rate": self.dub_rate,
+            "use_sidecar": self.dub_use_sidecar,
+            "overwrite": self.dub_overwrite,
+            "ocr_only": self.dub_ocr_only,
+            "ocr_mode": self.dub_ocr_mode,
+        });
+        if let Err(error) = self.spawn_bridge(ctx, request) {
+            self.busy = Busy::Idle;
+            self.error = Some(error.clone());
+            self.push_log(format!("LỖI: {error}"));
+        }
+    }
+
     fn cancel(&mut self) {
         if let Some(mut child) = self.child.take() {
             let _ = child.kill();
             let _ = child.wait();
+        }
+        if self.busy == Busy::Dubbing {
+            self.dub_finished = true;
+            self.dub_stage = "Đã hủy".to_owned();
         }
         self.busy = Busy::Idle;
         self.status = "Đã hủy".to_owned();
@@ -596,6 +704,9 @@ impl App {
                     dl.ep_progress.clear();
                     dl.finished = false;
                 }
+                if let Some(series_dir) = value.get("series_dir").and_then(Value::as_str) {
+                    self.push_log(format!("Thư mục phim: {series_dir}"));
+                }
                 self.status = format!("Đang tải 0/{total} tập...");
             }
             "episode_start" => {
@@ -677,7 +788,98 @@ impl App {
                     self.catalog_page
                 ));
             }
+            "dub_start" => {
+                let total = value.get("total").and_then(Value::as_u64).unwrap_or(0) as usize;
+                self.dub_total = total;
+                self.dub_done = 0;
+                self.dub_failed = 0;
+                self.dub_current.clear();
+                self.dub_progress = 0.0;
+                self.dub_stage = "Bắt đầu".to_owned();
+                self.dub_finished = false;
+                if let Some(output) = value.get("output_dir").and_then(Value::as_str) {
+                    if self.dub_output.trim().is_empty() {
+                        self.dub_output = output.to_owned();
+                    }
+                    self.push_log(format!("Xuất lồng tiếng vào: {output}"));
+                }
+                self.status = format!("Đang lồng tiếng 0/{total} video...");
+            }
+            "dub_video_start" => {
+                let index = value.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
+                let total = value.get("total").and_then(Value::as_u64).unwrap_or(0) as usize;
+                let name = value.get("name").and_then(Value::as_str).unwrap_or("");
+                self.dub_current = name.to_owned();
+                self.dub_stage = "Đang xử lý".to_owned();
+                self.status = format!("Đang xử lý {index}/{total}: {name}");
+                self.push_log(format!("[{index}/{total}] {name}"));
+            }
+            "dub_progress" => {
+                let index = value.get("index").and_then(Value::as_u64).unwrap_or(1) as usize;
+                let percent = value.get("percent").and_then(Value::as_f64).unwrap_or(0.0) as f32;
+                let message = value.get("message").and_then(Value::as_str).unwrap_or("");
+                let total = self.dub_total.max(1) as f32;
+                self.dub_progress =
+                    (((index.saturating_sub(1)) as f32 + percent / 100.0) / total).clamp(0.0, 1.0);
+                self.dub_stage = message.to_owned();
+                let stage = value
+                    .get("stage")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_uppercase();
+                if !message.is_empty() {
+                    self.status =
+                        format!("Lồng tiếng {index}/{} — {stage}: {message}", self.dub_total);
+                }
+            }
+            "dub_video_done" => {
+                let index = value.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
+                let name = value.get("name").and_then(Value::as_str).unwrap_or("");
+                let skipped = value
+                    .get("skipped")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                self.dub_done += 1;
+                self.dub_progress = (index as f32 / self.dub_total.max(1) as f32).clamp(0.0, 1.0);
+                self.dub_current.clear();
+                self.dub_stage.clear();
+                if skipped {
+                    self.push_log(format!("Bỏ qua (đã có): {name}"));
+                } else {
+                    self.push_log(format!("Xong: {name}"));
+                }
+            }
+            "dub_video_error" => {
+                let name = value.get("name").and_then(Value::as_str).unwrap_or("");
+                let message = value
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("lỗi không xác định");
+                self.dub_failed += 1;
+                self.dub_current.clear();
+                self.push_log(format!("LỖI lồng tiếng {name}: {message}"));
+            }
+            "dub_finished" => {
+                let done = value.get("done").and_then(Value::as_u64).unwrap_or(0) as usize;
+                let failed = value.get("failed").and_then(Value::as_u64).unwrap_or(0) as usize;
+                let total = value.get("total").and_then(Value::as_u64).unwrap_or(0) as usize;
+                let elapsed = value.get("elapsed").and_then(Value::as_f64).unwrap_or(0.0);
+                self.dub_done = done;
+                self.dub_failed = failed;
+                self.dub_total = total;
+                self.dub_progress = 1.0;
+                self.dub_current.clear();
+                self.dub_stage = "Hoàn tất".to_owned();
+                self.dub_finished = true;
+                self.busy = Busy::Idle;
+                self.status =
+                    format!("Lồng tiếng xong: {done}/{total} video, {failed} lỗi ({elapsed:.0}s)");
+                self.push_log(format!(
+                    "Lồng tiếng hoàn tất: {done}/{total} video, {failed} lỗi, {elapsed:.1} giây"
+                ));
+            }
             "error" => {
+                let was_dubbing = self.busy == Busy::Dubbing;
                 let message = value
                     .get("message")
                     .and_then(Value::as_str)
@@ -686,6 +888,11 @@ impl App {
                 self.error = Some(message.clone());
                 self.busy = Busy::Idle;
                 self.status = "Lỗi".to_owned();
+                if was_dubbing {
+                    self.dub_finished = true;
+                    self.dub_stage = "Lỗi".to_owned();
+                    self.dub_current.clear();
+                }
                 self.push_log(format!("LỖI: {message}"));
                 if let Some(traceback) = value.get("traceback").and_then(Value::as_str) {
                     for line in traceback.lines().take(25) {
@@ -713,6 +920,11 @@ impl App {
                 if self.busy != Busy::Idle {
                     if let Some(dl) = &mut self.dl {
                         dl.finished = true;
+                    }
+                    if self.busy == Busy::Dubbing {
+                        self.dub_finished = true;
+                        self.dub_stage = "Tiến trình đã dừng".to_owned();
+                        self.dub_current.clear();
                     }
                     self.error = Some(
                         "Tiến trình Python đã dừng. Xem tab Nhật ký để biết chi tiết.".to_owned(),
@@ -853,6 +1065,12 @@ impl App {
                 if vtt_response.changed() {
                     settings_dirty = true;
                 }
+                ui.separator();
+                ui.label(
+                    egui::RichText::new("Mỗi phim lưu trong thư mục con cùng tên")
+                        .small()
+                        .color(TEXT_FADE),
+                );
             });
         });
 
@@ -1130,6 +1348,270 @@ impl App {
         }
     }
 
+    fn ui_dubbing(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let mut pick_input = false;
+        let mut pick_output = false;
+        let mut open_output = false;
+        let mut start = false;
+        let mut cancel = false;
+
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.label(
+                egui::RichText::new("LỒNG TIẾNG HÀNG LOẠT")
+                    .small()
+                    .strong()
+                    .color(TEXT_MAIN),
+            );
+            ui.label(
+                egui::RichText::new(
+                    "OCR phụ đề tiếng Việt có sẵn trong video → tạo giọng đọc → trộn với âm thanh gốc.",
+                )
+                .color(TEXT_FADE),
+            );
+            ui.small("Chỉ dùng cho video bạn sở hữu hoặc có quyền xử lý.");
+
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label("Thư mục video:");
+                let width = (ui.available_width() - 250.0).max(150.0);
+                let response = ui.add(
+                    egui::TextEdit::singleline(&mut self.dub_folder)
+                        .desired_width(width)
+                        .hint_text(
+                            egui::RichText::new("Chọn thư mục chứa các tập phim...")
+                                .color(TEXT_FADE),
+                        )
+                        .text_color(TEXT_MAIN),
+                );
+                if response.changed() {
+                    self.dub_video_count = count_videos(&self.dub_folder);
+                }
+                if ui.button("Chọn...").clicked() {
+                    pick_input = true;
+                }
+                if ui.button("Quét lại").clicked() {
+                    self.dub_video_count = count_videos(&self.dub_folder);
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Thư mục xuất:");
+                let width = (ui.available_width() - 250.0).max(150.0);
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.dub_output)
+                        .desired_width(width)
+                        .hint_text(
+                            egui::RichText::new("Mặc định: <thư mục video>/LongTieng")
+                                .color(TEXT_FADE),
+                        )
+                        .text_color(TEXT_MAIN),
+                );
+                if ui.button("Chọn...").clicked() {
+                    pick_output = true;
+                }
+                if ui.button("Mở").clicked() {
+                    open_output = true;
+                }
+            });
+            if self.dub_video_count > 0 {
+                ui.colored_label(
+                    egui::Color32::from_rgb(120, 220, 150),
+                    format!("Tìm thấy {} video trong thư mục.", self.dub_video_count),
+                );
+            } else if !self.dub_folder.trim().is_empty() {
+                ui.label(
+                    egui::RichText::new("Chưa tìm thấy video (mp4/mkv/mov/avi/webm/m4v).")
+                        .color(TEXT_FADE),
+                );
+            }
+        });
+
+        ui.add_space(8.0);
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.label(
+                egui::RichText::new("TUỲ CHỈNH GIỌNG ĐỌC")
+                    .small()
+                    .strong()
+                    .color(TEXT_MAIN),
+            );
+            ui.horizontal(|ui| {
+                ui.label("Giọng:");
+                egui::ComboBox::from_id_salt("dub_voice")
+                    .width(180.0)
+                    .selected_text(dub_voice_label(&self.dub_voice))
+                    .show_ui(ui, |ui| {
+                        for (id, name) in DUB_VOICES {
+                            ui.selectable_value(&mut self.dub_voice, (*id).to_owned(), *name);
+                        }
+                    });
+                ui.separator();
+                ui.label("Chế độ OCR:");
+                egui::ComboBox::from_id_salt("dub_ocr_mode")
+                    .width(250.0)
+                    .selected_text(if self.dub_ocr_mode == "fast" {
+                        "Nhanh — RapidOCR (thiếu dấu)"
+                    } else {
+                        "Chất lượng — VietOCR (khuyến nghị)"
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut self.dub_ocr_mode,
+                            "quality".to_owned(),
+                            "Chất lượng — VietOCR (khuyến nghị)",
+                        );
+                        ui.selectable_value(
+                            &mut self.dub_ocr_mode,
+                            "fast".to_owned(),
+                            "Nhanh — RapidOCR (thiếu dấu)",
+                        );
+                    });
+            });
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::Slider::new(&mut self.dub_original_volume, 0..=100)
+                        .text("Âm thanh gốc (%)"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut self.dub_tts_volume, 0..=200)
+                        .text("Âm lồng tiếng (%)"),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::Slider::new(&mut self.dub_rate, -30..=30).text("Tốc độ đọc (%)"),
+                );
+                ui.checkbox(
+                    &mut self.dub_use_sidecar,
+                    egui::RichText::new("Ưu tiên SRT/VTT có sẵn").color(TEXT_MAIN),
+                );
+                ui.checkbox(
+                    &mut self.dub_overwrite,
+                    egui::RichText::new("Ghi đè file đã có").color(TEXT_MAIN),
+                );
+                ui.checkbox(
+                    &mut self.dub_ocr_only,
+                    egui::RichText::new("Chỉ tạo SRT (không lồng tiếng)").color(TEXT_MAIN),
+                );
+            });
+            ui.small(
+                "File SRT được lưu trong thư mục _phude để bạn xem/sửa. Chạy lại với \"Ưu tiên SRT/VTT có sẵn\" \
+                 sẽ dùng bản đã sửa. HD 2 phút/video có thể mất 2–5 phút; 60 tập có thể mất vài giờ.",
+            );
+        });
+
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            let can_start = self.busy == Busy::Idle && self.dub_video_count > 0;
+            if ui
+                .add_enabled(
+                    can_start,
+                    egui::Button::new("Bắt đầu lồng tiếng").fill(BRAND_BUTTON),
+                )
+                .clicked()
+            {
+                start = true;
+            }
+            if self.busy == Busy::Dubbing {
+                if ui
+                    .add(egui::Button::new("Hủy").fill(BRAND_BUTTON_HOVER))
+                    .clicked()
+                {
+                    cancel = true;
+                }
+            }
+            if ui.button("Mở thư mục xuất").clicked() {
+                open_output = true;
+            }
+            if self.busy == Busy::Dubbing {
+                ui.spinner();
+            }
+        });
+
+        if self.dub_total > 0 {
+            ui.add_space(8.0);
+            egui::Frame::group(ui.style()).show(ui, |ui| {
+                ui.label(
+                    egui::RichText::new("TIẾN ĐỘ")
+                        .small()
+                        .strong()
+                        .color(TEXT_MAIN),
+                );
+                ui.add(
+                    egui::ProgressBar::new(self.dub_progress.clamp(0.0, 1.0))
+                        .desired_width(ui.available_width())
+                        .show_percentage(),
+                );
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(format!(
+                        "{} / {} video",
+                        self.dub_done + self.dub_failed,
+                        self.dub_total
+                    ));
+                    if self.dub_failed > 0 {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(255, 120, 120),
+                            format!("{} lỗi", self.dub_failed),
+                        );
+                    }
+                    if !self.dub_current.is_empty() {
+                        ui.separator();
+                        ui.label(&self.dub_current);
+                    }
+                });
+                if !self.dub_stage.is_empty() {
+                    ui.label(egui::RichText::new(&self.dub_stage).color(TEXT_FADE));
+                }
+                if self.dub_finished {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(120, 220, 150),
+                        "Hoàn tất. Video đã lồng tiếng nằm trong thư mục xuất.",
+                    );
+                }
+            });
+        }
+
+        if pick_input {
+            if let Some(dir) = rfd::FileDialog::new()
+                .set_title("Chọn thư mục chứa video")
+                .pick_folder()
+            {
+                self.dub_folder = dir.display().to_string();
+                self.dub_video_count = count_videos(&self.dub_folder);
+                if self.dub_output.trim().is_empty() {
+                    self.dub_output = dir.join("LongTieng").display().to_string();
+                }
+            }
+        }
+        if pick_output {
+            if let Some(dir) = rfd::FileDialog::new()
+                .set_title("Chọn thư mục xuất")
+                .pick_folder()
+            {
+                self.dub_output = dir.display().to_string();
+            }
+        }
+        if open_output {
+            let target = if self.dub_output.trim().is_empty() {
+                if self.dub_folder.trim().is_empty() {
+                    self.output_dir.clone()
+                } else {
+                    std::path::Path::new(self.dub_folder.trim())
+                        .join("LongTieng")
+                        .display()
+                        .to_string()
+                }
+            } else {
+                self.dub_output.trim().to_owned()
+            };
+            open_output_folder(&target);
+        }
+        if cancel {
+            self.cancel();
+        }
+        if start {
+            self.start_dubbing(ctx);
+        }
+    }
+
     fn ui_donate(&mut self, ui: &mut egui::Ui) {
         let mut copied: Option<&'static str> = None;
 
@@ -1242,7 +1724,7 @@ impl eframe::App for App {
                 ui.heading(egui::RichText::new("DramaAI").color(BRAND_PINK));
                 ui.heading("Tiktok Downloader");
                 ui.label(
-                    egui::RichText::new("Rust GUI • Python core • v1.1.4")
+                    egui::RichText::new("Rust GUI • Python core • v1.1.5")
                         .small()
                         .weak(),
                 );
@@ -1256,7 +1738,13 @@ impl eframe::App for App {
             });
             ui.add_space(5.0);
             ui.horizontal(|ui| {
-                for tab in [Tab::Download, Tab::Catalog, Tab::Donate, Tab::Log] {
+                for tab in [
+                    Tab::Download,
+                    Tab::Catalog,
+                    Tab::Dubbing,
+                    Tab::Donate,
+                    Tab::Log,
+                ] {
                     if tab_button(ui, self.tab == tab, tab.label()) {
                         self.tab = tab;
                     }
@@ -1306,6 +1794,25 @@ impl eframe::App for App {
                         );
                     }
                 }
+                if self.busy == Busy::Dubbing || self.dub_total > 0 {
+                    ui.separator();
+                    ui.add(
+                        egui::ProgressBar::new(self.dub_progress.clamp(0.0, 1.0))
+                            .desired_width(150.0)
+                            .show_percentage(),
+                    );
+                    if self.busy == Busy::Dubbing {
+                        if ui.small_button("Hủy").clicked() {
+                            cancel_download = true;
+                        }
+                    }
+                    if self.dub_failed > 0 {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(255, 120, 120),
+                            format!("{} lỗi lồng tiếng", self.dub_failed),
+                        );
+                    }
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if let Some(series) = &self.series {
                         ui.label(
@@ -1332,6 +1839,11 @@ impl eframe::App for App {
                     .show(ui, |ui| self.ui_download(ui, ctx));
             }
             Tab::Catalog => self.ui_catalog(ui, ctx),
+            Tab::Dubbing => {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.ui_dubbing(ui, ctx));
+            }
             Tab::Donate => {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
@@ -1580,6 +2092,33 @@ fn platform_label(id: &str) -> &'static str {
         .unwrap_or("Tự động nhận diện")
 }
 
+fn dub_voice_label(id: &str) -> &'static str {
+    DUB_VOICES
+        .iter()
+        .find(|(voice_id, _)| *voice_id == id)
+        .map(|(_, name)| *name)
+        .unwrap_or("Giọng mặc định")
+}
+
+fn count_videos(folder: &str) -> usize {
+    const EXTENSIONS: &[&str] = &["mp4", "mkv", "mov", "avi", "webm", "m4v"];
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        return 0;
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry.path().is_file()
+                && entry
+                    .path()
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .map(|extension| EXTENSIONS.contains(&extension.to_ascii_lowercase().as_str()))
+                    .unwrap_or(false)
+        })
+        .count()
+}
+
 fn parse_range(input: &str, max_episode: u32) -> Option<Vec<u32>> {
     let mut result = HashSet::new();
     for part in input.split(',') {
@@ -1731,6 +2270,19 @@ mod tests {
         );
         assert_eq!(super::parse_range("abc", 20), None);
     }
+
+    #[test]
+    fn video_counter_filters_extensions() {
+        let folder = std::env::temp_dir().join(format!("dramaai-count-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("create temp folder");
+        std::fs::write(folder.join("a.mp4"), b"").expect("write mp4");
+        std::fs::write(folder.join("b.MKV"), b"").expect("write mkv");
+        std::fs::write(folder.join("c.txt"), b"").expect("write txt");
+        std::fs::create_dir_all(folder.join("d.mp4")).expect("create dir");
+        assert_eq!(super::count_videos(folder.to_str().expect("utf-8 path")), 2);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
 }
 
 fn main() -> eframe::Result {
@@ -1743,7 +2295,7 @@ fn main() -> eframe::Result {
         .with_inner_size([960.0, 680.0])
         .with_min_inner_size([820.0, 560.0])
         .with_resizable(true)
-        .with_title("DramaAI Tiktok Downloader v1.1.4");
+        .with_title("DramaAI Tiktok Downloader v1.1.5");
     if let Some(icon) = load_window_icon() {
         viewport = viewport.with_icon(std::sync::Arc::new(icon));
     }
@@ -1755,7 +2307,7 @@ fn main() -> eframe::Result {
     };
 
     eframe::run_native(
-        "DramaAI Tiktok Downloader v1.1.4",
+        "DramaAI Tiktok Downloader v1.1.5",
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )
