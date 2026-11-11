@@ -313,7 +313,7 @@ Cả hai tuỳ chọn được lưu cùng các thiết lập khác khi thoát ap
 
 1. Mở tab **Lồng tiếng**.
 2. Chọn **Thư mục video** → GUI báo số video tìm thấy.
-3. Chọn **Thư mục xuất** (mặc định `<thư mục cha>/<tên thư mục> Lồng Tiếng`, ví dụ `Download Phim AI/Yêu Đương Chẳng Bằng Đi Ăn Lẩu Lồng Tiếng`).
+3. Chọn **Thư mục xuất** (mặc định `<thư mục cha>/<tên thư mục> Lồng Tiếng`, ví dụ `Download Phim AI/Yêu Đương Chẳng Bằng Đi Ăn Lẩu Lồng Tiếng`). Khi chọn thư mục video khác, đường dẫn xuất tự cập nhật theo tên thư mục mới.
 4. Chọn **Nguồn giọng** (Edge TTS / VieNeu-TTS), chọn giọng, chỉnh âm gốc/âm lồng/tốc độ đọc.
 5. Bấm **Bắt đầu lồng tiếng**. Có thể **Hủy** giữa chừng. Sau khi xong, app tự xóa `_phude` và `_tts_cache`, chỉ giữ lại video lồng tiếng (bật **Giữ file tạm** nếu muốn giữ SRT để sửa).
 
@@ -357,7 +357,7 @@ Tab **Ghép tập** nối toàn bộ video trong một thư mục thành **1 fil
 
 1. Mở tab **Ghép tập**.
 2. Chọn **Thư mục video** (ví dụ `Download Phim AI\Yêu Đương Chẳng Bằng Đi Ăn Lẩu`).
-3. **File đầu ra** mặc định là `<thư mục cha>/<tên thư mục> Full.mp4`, ví dụ `Download Phim AI\Yêu Đương Chẳng Bằng Đi Ăn Lẩu Full.mp4`.
+3. **File đầu ra** mặc định là `<thư mục cha>/<tên thư mục> Full.mp4`, ví dụ `Download Phim AI\Yêu Đương Chẳng Bằng Đi Ăn Lẩu Full.mp4`. Khi chọn thư mục khác, đường dẫn này tự cập nhật theo tên thư mục mới (trừ khi bạn đã tự sửa tay).
 4. Bấm **Bắt đầu ghép**.
 
 App tự sắp xếp theo số tập: `EP01, EP02, ... EP10, EP11, ...` kể cả khi tên file không có số 0 ở đầu.

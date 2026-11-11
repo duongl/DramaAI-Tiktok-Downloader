@@ -1707,6 +1707,7 @@ impl App {
             ui.horizontal(|ui| {
                 ui.label("Thư mục video:");
                 let width = (ui.available_width() - 250.0).max(150.0);
+                let folder_before = self.dub_folder.clone();
                 let response = ui.add(
                     egui::TextEdit::singleline(&mut self.dub_folder)
                         .desired_width(width)
@@ -1717,7 +1718,17 @@ impl App {
                         .text_color(TEXT_MAIN),
                 );
                 if response.changed() {
+                    let auto = is_auto_dub_output(&self.dub_output, &folder_before);
                     self.dub_video_count = count_videos(&self.dub_folder);
+                    if auto {
+                        self.dub_output = if self.dub_folder.trim().is_empty() {
+                            String::new()
+                        } else {
+                            default_dub_output(std::path::Path::new(self.dub_folder.trim()))
+                                .display()
+                                .to_string()
+                        };
+                    }
                 }
                 if ui.button("Chọn...").clicked() {
                     pick_input = true;
@@ -2114,9 +2125,10 @@ impl App {
                 .set_title("Chọn thư mục chứa video")
                 .pick_folder()
             {
+                let auto = is_auto_dub_output(&self.dub_output, &self.dub_folder);
                 self.dub_folder = dir.display().to_string();
                 self.dub_video_count = count_videos(&self.dub_folder);
-                if self.dub_output.trim().is_empty() {
+                if auto {
                     self.dub_output = default_dub_output(&dir).display().to_string();
                 }
             }
@@ -2174,6 +2186,7 @@ impl App {
             ui.horizontal(|ui| {
                 ui.label("Thư mục video:");
                 let width = (ui.available_width() - 250.0).max(150.0);
+                let folder_before = self.merge_folder.clone();
                 let response = ui.add(
                     egui::TextEdit::singleline(&mut self.merge_folder)
                         .desired_width(width)
@@ -2184,7 +2197,17 @@ impl App {
                         .text_color(TEXT_MAIN),
                 );
                 if response.changed() {
+                    let auto = is_auto_merge_output(&self.merge_output, &folder_before);
                     self.merge_video_count = count_videos(&self.merge_folder);
+                    if auto {
+                        self.merge_output = if self.merge_folder.trim().is_empty() {
+                            String::new()
+                        } else {
+                            default_merge_output(std::path::Path::new(self.merge_folder.trim()))
+                                .display()
+                                .to_string()
+                        };
+                    }
                 }
                 if ui.button("Chọn...").clicked() {
                     pick_input = true;
@@ -2321,9 +2344,10 @@ impl App {
                 .set_title("Chọn thư mục chứa các tập phim")
                 .pick_folder()
             {
+                let auto = is_auto_merge_output(&self.merge_output, &self.merge_folder);
                 self.merge_folder = dir.display().to_string();
                 self.merge_video_count = count_videos(&self.merge_folder);
-                if self.merge_output.trim().is_empty() {
+                if auto {
                     self.merge_output = default_merge_output(&dir).display().to_string();
                 }
             }
@@ -2481,7 +2505,7 @@ impl eframe::App for App {
                 ui.heading(egui::RichText::new("DramaAI").color(BRAND_PINK));
                 ui.heading("Tiktok Downloader");
                 ui.label(
-                    egui::RichText::new("Rust GUI • Python core • v1.3.0")
+                    egui::RichText::new("Rust GUI • Python core • v1.3.1")
                         .small()
                         .weak(),
                 );
@@ -2959,6 +2983,34 @@ fn default_merge_output(folder: &std::path::Path) -> PathBuf {
     parent.join(format!("{name} Full.mp4"))
 }
 
+fn is_auto_dub_output(output: &str, folder: &str) -> bool {
+    let output = output.trim();
+    if output.is_empty() {
+        return true;
+    }
+    if folder.trim().is_empty() {
+        return false;
+    }
+    let default = default_dub_output(std::path::Path::new(folder.trim()))
+        .display()
+        .to_string();
+    output.eq_ignore_ascii_case(&default)
+}
+
+fn is_auto_merge_output(output: &str, folder: &str) -> bool {
+    let output = output.trim();
+    if output.is_empty() {
+        return true;
+    }
+    if folder.trim().is_empty() {
+        return false;
+    }
+    let default = default_merge_output(std::path::Path::new(folder.trim()))
+        .display()
+        .to_string();
+    output.eq_ignore_ascii_case(&default)
+}
+
 fn count_videos(folder: &str) -> usize {
     const EXTENSIONS: &[&str] = &["mp4", "mkv", "mov", "avi", "webm", "m4v"];
     let Ok(entries) = std::fs::read_dir(folder) else {
@@ -3144,6 +3196,32 @@ mod tests {
     }
 
     #[test]
+    fn auto_output_detection() {
+        assert!(super::is_auto_dub_output("", "C:\\Phim AI\\Phim"));
+        assert!(super::is_auto_dub_output(
+            "C:\\Phim AI\\Phim Lồng Tiếng",
+            "C:\\Phim AI\\Phim"
+        ));
+        assert!(!super::is_auto_dub_output(
+            "D:\\Custom\\out",
+            "C:\\Phim AI\\Phim"
+        ));
+        assert!(super::is_auto_merge_output("", "C:\\Phim AI\\Phim"));
+        assert!(super::is_auto_merge_output(
+            "C:\\Phim AI\\Phim Full.mp4",
+            "C:\\Phim AI\\Phim"
+        ));
+        assert!(!super::is_auto_merge_output(
+            "D:\\Custom\\Full.mp4",
+            "C:\\Phim AI\\Phim"
+        ));
+        assert!(super::is_auto_merge_output(
+            "C:\\PHIM AI\\PHIM FULL.MP4",
+            "C:\\Phim AI\\Phim"
+        ));
+    }
+
+    #[test]
     fn settings_roundtrip_keeps_dubbing_values() {
         let old = r#"{"output_dir":"C:\\Phim AI","concurrency":2,"save_vtt":true,"platform":"dramabox","last_url":"dramabox:1"}"#;
         let mut settings: super::Settings = serde_json::from_str(old).expect("old settings");
@@ -3213,7 +3291,7 @@ fn main() -> eframe::Result {
         .with_inner_size([960.0, 680.0])
         .with_min_inner_size([820.0, 560.0])
         .with_resizable(true)
-        .with_title("DramaAI Tiktok Downloader v1.3.0");
+        .with_title("DramaAI Tiktok Downloader v1.3.1");
     if let Some(icon) = load_window_icon() {
         viewport = viewport.with_icon(std::sync::Arc::new(icon));
     }
@@ -3225,7 +3303,7 @@ fn main() -> eframe::Result {
     };
 
     eframe::run_native(
-        "DramaAI Tiktok Downloader v1.3.0",
+        "DramaAI Tiktok Downloader v1.3.1",
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )
