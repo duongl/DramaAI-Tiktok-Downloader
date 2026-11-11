@@ -972,6 +972,7 @@ impl App {
                     .width(220.0)
                     .selected_text(platform_label(&self.platform))
                     .show_ui(ui, |ui| {
+                        combo_popup_style(ui);
                         for (id, name) in PLATFORMS {
                             ui.selectable_value(&mut self.platform, (*id).to_owned(), *name);
                         }
@@ -1250,6 +1251,7 @@ impl App {
                     .width(200.0)
                     .selected_text(platform_label(&self.catalog_platform))
                     .show_ui(ui, |ui| {
+                        combo_popup_style(ui);
                         for (id, name) in PLATFORMS.iter().skip(1) {
                             ui.selectable_value(
                                 &mut self.catalog_platform,
@@ -1439,6 +1441,7 @@ impl App {
                     .width(180.0)
                     .selected_text(dub_voice_label(&self.dub_voice))
                     .show_ui(ui, |ui| {
+                        combo_popup_style(ui);
                         for (id, name) in DUB_VOICES {
                             ui.selectable_value(&mut self.dub_voice, (*id).to_owned(), *name);
                         }
@@ -1453,6 +1456,7 @@ impl App {
                         "Chất lượng — VietOCR (khuyến nghị)"
                     })
                     .show_ui(ui, |ui| {
+                        combo_popup_style(ui);
                         ui.selectable_value(
                             &mut self.dub_ocr_mode,
                             "quality".to_owned(),
@@ -1724,7 +1728,7 @@ impl eframe::App for App {
                 ui.heading(egui::RichText::new("DramaAI").color(BRAND_PINK));
                 ui.heading("Tiktok Downloader");
                 ui.label(
-                    egui::RichText::new("Rust GUI • Python core • v1.1.5")
+                    egui::RichText::new("Rust GUI • Python core • v1.1.6")
                         .small()
                         .weak(),
                 );
@@ -1937,6 +1941,17 @@ fn episode_list_ui(
         ui.add_space(10.0);
         ui.label(egui::RichText::new("Không có tập nào khớp bộ lọc.").weak());
     }
+}
+
+fn combo_popup_style(ui: &mut egui::Ui) {
+    let visuals = ui.visuals_mut();
+    // Popup rows sit on the dark window background, so unselected text must be
+    // light. Hovered/selected rows use pastel fills and keep dark text.
+    visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0_f32, TEXT_MAIN);
+    visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.5_f32, BUTTON_TEXT);
+    visuals.widgets.active.fg_stroke = egui::Stroke::new(1.5_f32, BUTTON_TEXT);
+    visuals.widgets.open.fg_stroke = egui::Stroke::new(1.5_f32, BUTTON_TEXT);
+    visuals.selection.stroke = egui::Stroke::new(1.0_f32, BUTTON_TEXT);
 }
 
 fn tab_button(ui: &mut egui::Ui, selected: bool, label: &str) -> bool {
@@ -2295,7 +2310,7 @@ fn main() -> eframe::Result {
         .with_inner_size([960.0, 680.0])
         .with_min_inner_size([820.0, 560.0])
         .with_resizable(true)
-        .with_title("DramaAI Tiktok Downloader v1.1.5");
+        .with_title("DramaAI Tiktok Downloader v1.1.6");
     if let Some(icon) = load_window_icon() {
         viewport = viewport.with_icon(std::sync::Arc::new(icon));
     }
@@ -2307,7 +2322,7 @@ fn main() -> eframe::Result {
     };
 
     eframe::run_native(
-        "DramaAI Tiktok Downloader v1.1.5",
+        "DramaAI Tiktok Downloader v1.1.6",
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )
