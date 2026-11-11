@@ -36,6 +36,7 @@ Yêu cầu:
 - Python 3.8+ trên `PATH` và đã cài package (`pip install -e .`).
 - File `drama_downloader/bridge.py` nằm trong repo.
 - Muốn dùng tab **Lồng tiếng**: cài thêm `pip install -e ".[dubbing]"`, torch CPU và ffmpeg trong `PATH`.
+- Muốn dùng VieNeu-TTS local (25 giọng, 48 kHz): cài thêm `pip install -e ".[dubbing-vieneu]"` (Python 3.10+).
 - Không cần Rust nếu chỉ chạy bản đã build.
 
 Nếu Python không nằm trên `PATH`, đặt biến môi trường `DRAMA_PYTHON`:
@@ -58,12 +59,13 @@ run_gui.bat
 - Hủy giữa chừng (file `.part` có thể còn lại).
 - Chọn thư mục tải bằng hộp thoại Windows, mở thư mục sau khi tải.
 - Tab **Danh mục** để duyệt phim (DramaBox và ShortMax).
-- Tab **Lồng tiếng**: chọn cả thư mục phim, OCR phụ đề Việt có sẵn, tạo TTS và trộn với âm thanh gốc.
+- Tab **Lồng tiếng**: chọn cả thư mục phim, OCR phụ đề Việt có sẵn, tạo TTS bằng Edge TTS hoặc VieNeu-TTS local (25 giọng, 48 kHz), Soft Timing và Voice tự nhiên, rồi trộn với âm thanh gốc.
 - Tab **Donate** với mã VietQR, thông tin Vietcombank và nút sao chép nhanh.
 - Tab **Nhật ký** ghi lại từng bước và lỗi.
 - Giao diện tông hồng–cam lấy cảm hứng từ DramaBox, cửa sổ tự căn giữa khi mở.
-- Tự động lưu thư mục tải, số luồng, tuỳ chọn VTT, nền tảng và URL gần nhất vào:
+- Tự động lưu **toàn bộ thiết lập** — thư mục tải, số luồng, VTT, nền tảng, URL, thư mục lồng tiếng, nguồn giọng, giọng đọc, mức âm gốc/âm lồng, tốc độ đọc, OCR mode, Soft Timing, Voice tự nhiên và checkbox — vào:
   `%APPDATA%\DramaAI Tiktok Downloader\settings.json`.
+- Không bundle `device.json`/`fix_shark` của CapCut; dùng Edge TTS hoặc VieNeu-TTS (mã nguồn mở) thay thế.
 - Icon riêng và shortcut Desktop (`create_shortcut.ps1`).
 
 ## Kiến trúc

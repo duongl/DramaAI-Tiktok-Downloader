@@ -129,6 +129,21 @@ Hello World!
             )
         print("[OK] Dubbing helper tests passed")
 
+    def test_tts_voice_catalog(self):
+        self.assertIn("edge", dubbing.TTS_PROVIDERS)
+        self.assertIn("vieneu", dubbing.TTS_PROVIDERS)
+        self.assertEqual(len(dubbing.VIENEU_VOICES), 25)
+        self.assertEqual(len(set(dubbing.VIENEU_VOICES)), 25)
+        self.assertIn("Hải Đăng", dubbing.VIENEU_VOICES)
+        self.assertEqual(len(dubbing.VI_VOICES), 2)
+        import inspect
+
+        params = inspect.signature(dubbing.run_batch).parameters
+        self.assertIn("tts_provider", params)
+        self.assertIn("soft_timing", params)
+        self.assertIn("natural_voice", params)
+        print("[OK] TTS voice catalog test passed")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="dramaai-tiktok-downloader",
-    version="1.1.7",
+    version="1.1.8",
     description="DramaAI Tiktok Downloader - Multi-Platform Short Drama Extractor and Downloader Module",
     packages=find_packages(),
     install_requires=[
@@ -25,6 +25,11 @@ setup(
         # Optional fallback OCR when VietOCR is unavailable.
         "dubbing-easyocr": [
             "easyocr>=1.7.0",
+        ],
+        # Optional local 48 kHz Vietnamese TTS with 25 preset voices + cloning.
+        # Requires Python 3.10+; models download on first use.
+        "dubbing-vieneu": [
+            "vieneu>=3.8.4",
         ],
     },
     entry_points={

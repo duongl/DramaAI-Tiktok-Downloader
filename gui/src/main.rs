@@ -28,6 +28,39 @@ const DUB_VOICES: &[(&str, &str)] = &[
     ("vi-VN-NamMinhNeural", "Nam — Nam Minh"),
 ];
 
+const TTS_PROVIDERS: &[(&str, &str)] = &[
+    ("edge", "Edge TTS (online)"),
+    ("vieneu", "VieNeu-TTS (local, 48kHz)"),
+];
+
+const VIENEU_VOICES: &[&str] = &[
+    "Adam bựa",
+    "Trúc Ly",
+    "Thiện Minh",
+    "Mai Anh",
+    "Hải Đăng",
+    "Thùy Dung",
+    "Thiền Tâm Đức",
+    "Ngọc Huyền",
+    "Quang Sơn",
+    "Ngọc Trân",
+    "Minh Đức",
+    "Phạm Tuyên",
+    "Thái Sơn",
+    "Xuân Vĩnh",
+    "Thanh Bình",
+    "Ngọc Linh",
+    "Đoan Trang",
+    "Thục Đoan",
+    "Minh Triết",
+    "Mỹ Duyên",
+    "Quỳnh Anh",
+    "Đức Trí",
+    "Kim Thanh",
+    "Adam",
+    "Quốc Tuấn",
+];
+
 const PLATFORMS: &[(&str, &str)] = &[
     ("", "Tự động nhận diện"),
     ("dramabox", "DramaBox"),
@@ -129,6 +162,21 @@ struct Settings {
     save_vtt: bool,
     platform: String,
     last_url: String,
+    catalog_platform: String,
+    dub_folder: String,
+    dub_output: String,
+    dub_provider: String,
+    dub_voice: String,
+    dub_original_enabled: bool,
+    dub_original_volume: u32,
+    dub_tts_volume: u32,
+    dub_rate: i32,
+    dub_use_sidecar: bool,
+    dub_overwrite: bool,
+    dub_ocr_only: bool,
+    dub_ocr_mode: String,
+    dub_soft_timing: bool,
+    dub_natural_voice: bool,
 }
 
 impl Default for Settings {
@@ -139,6 +187,21 @@ impl Default for Settings {
             save_vtt: false,
             platform: String::new(),
             last_url: String::new(),
+            catalog_platform: "dramabox".to_owned(),
+            dub_folder: String::new(),
+            dub_output: String::new(),
+            dub_provider: "edge".to_owned(),
+            dub_voice: DUB_VOICES[0].0.to_owned(),
+            dub_original_enabled: true,
+            dub_original_volume: 15,
+            dub_tts_volume: 100,
+            dub_rate: 0,
+            dub_use_sidecar: true,
+            dub_overwrite: false,
+            dub_ocr_only: false,
+            dub_ocr_mode: "quality".to_owned(),
+            dub_soft_timing: false,
+            dub_natural_voice: true,
         }
     }
 }
@@ -211,7 +274,9 @@ struct App {
 
     dub_folder: String,
     dub_output: String,
+    dub_provider: String,
     dub_voice: String,
+    dub_original_enabled: bool,
     dub_original_volume: u32,
     dub_tts_volume: u32,
     dub_rate: i32,
@@ -219,6 +284,8 @@ struct App {
     dub_overwrite: bool,
     dub_ocr_only: bool,
     dub_ocr_mode: String,
+    dub_soft_timing: bool,
+    dub_natural_voice: bool,
     dub_video_count: usize,
     dub_total: usize,
     dub_done: usize,
@@ -273,7 +340,7 @@ impl App {
         let output_dir = if settings.output_dir.trim().is_empty() {
             "downloads".to_owned()
         } else {
-            settings.output_dir
+            settings.output_dir.clone()
         };
         let concurrency = if (1..=8).contains(&settings.concurrency) {
             settings.concurrency
@@ -284,10 +351,39 @@ impl App {
             log.push_back(format!("{} Thư mục tải đã lưu: {}", now_hms(), output_dir));
         }
 
+        let dub_provider = if settings.dub_provider == "vieneu" {
+            "vieneu".to_owned()
+        } else {
+            "edge".to_owned()
+        };
+        let dub_voice = if dub_provider == "vieneu" {
+            if VIENEU_VOICES.contains(&settings.dub_voice.as_str()) {
+                settings.dub_voice.clone()
+            } else {
+                VIENEU_VOICES[0].to_owned()
+            }
+        } else if DUB_VOICES.iter().any(|(id, _)| *id == settings.dub_voice) {
+            settings.dub_voice.clone()
+        } else {
+            DUB_VOICES[0].0.to_owned()
+        };
+        let dub_ocr_mode = if settings.dub_ocr_mode == "fast" {
+            "fast".to_owned()
+        } else {
+            "quality".to_owned()
+        };
+        let dub_folder = settings.dub_folder.clone();
+        let dub_video_count = count_videos(&dub_folder);
+        let catalog_platform = if settings.catalog_platform.trim().is_empty() {
+            "dramabox".to_owned()
+        } else {
+            settings.catalog_platform.clone()
+        };
+
         Self {
             tab,
-            url: settings.last_url,
-            platform: settings.platform,
+            url: settings.last_url.clone(),
+            platform: settings.platform.clone(),
             output_dir,
             concurrency,
             save_vtt: settings.save_vtt,
@@ -302,22 +398,26 @@ impl App {
             error: None,
             log,
             dl: None,
-            catalog_platform: "dramabox".to_owned(),
+            catalog_platform,
             catalog_query: String::new(),
             catalog_page: 1,
             catalog_items: Vec::new(),
             catalog_total: 0,
-            dub_folder: String::new(),
-            dub_output: String::new(),
-            dub_voice: DUB_VOICES[0].0.to_owned(),
-            dub_original_volume: 15,
-            dub_tts_volume: 100,
-            dub_rate: 0,
-            dub_use_sidecar: true,
-            dub_overwrite: false,
-            dub_ocr_only: false,
-            dub_ocr_mode: "quality".to_owned(),
-            dub_video_count: 0,
+            dub_folder,
+            dub_output: settings.dub_output.clone(),
+            dub_provider,
+            dub_voice,
+            dub_original_enabled: settings.dub_original_enabled,
+            dub_original_volume: settings.dub_original_volume.clamp(0, 100),
+            dub_tts_volume: settings.dub_tts_volume.clamp(0, 200),
+            dub_rate: settings.dub_rate.clamp(-30, 30),
+            dub_use_sidecar: settings.dub_use_sidecar,
+            dub_overwrite: settings.dub_overwrite,
+            dub_ocr_only: settings.dub_ocr_only,
+            dub_ocr_mode,
+            dub_soft_timing: settings.dub_soft_timing,
+            dub_natural_voice: settings.dub_natural_voice,
+            dub_video_count,
             dub_total: 0,
             dub_done: 0,
             dub_failed: 0,
@@ -347,6 +447,21 @@ impl App {
             save_vtt: self.save_vtt,
             platform: self.platform.clone(),
             last_url: self.url.clone(),
+            catalog_platform: self.catalog_platform.clone(),
+            dub_folder: self.dub_folder.clone(),
+            dub_output: self.dub_output.clone(),
+            dub_provider: self.dub_provider.clone(),
+            dub_voice: self.dub_voice.clone(),
+            dub_original_enabled: self.dub_original_enabled,
+            dub_original_volume: self.dub_original_volume,
+            dub_tts_volume: self.dub_tts_volume,
+            dub_rate: self.dub_rate,
+            dub_use_sidecar: self.dub_use_sidecar,
+            dub_overwrite: self.dub_overwrite,
+            dub_ocr_only: self.dub_ocr_only,
+            dub_ocr_mode: self.dub_ocr_mode.clone(),
+            dub_soft_timing: self.dub_soft_timing,
+            dub_natural_voice: self.dub_natural_voice,
         });
     }
 
@@ -453,6 +568,7 @@ impl App {
             return;
         }
 
+        self.save_settings();
         self.error = None;
         self.catalog_items.clear();
         self.catalog_total = 0;
@@ -499,7 +615,13 @@ impl App {
         } else {
             self.dub_output.trim().to_owned()
         };
+        let original_volume = if self.dub_original_enabled {
+            self.dub_original_volume
+        } else {
+            0
+        };
 
+        self.save_settings();
         self.error = None;
         self.dub_total = count;
         self.dub_done = 0;
@@ -511,8 +633,11 @@ impl App {
         self.busy = Busy::Dubbing;
         self.status = format!("Đang lồng tiếng 0/{count} video...");
         self.push_log(format!(
-            "Bắt đầu lồng tiếng {count} video từ {folder} (OCR: {}, gốc {}%, TTS {}%)",
-            self.dub_ocr_mode, self.dub_original_volume, self.dub_tts_volume
+            "Bắt đầu lồng tiếng {count} video từ {folder} ({} · OCR: {}, gốc {}%, TTS {}%)",
+            tts_provider_label(&self.dub_provider),
+            self.dub_ocr_mode,
+            original_volume,
+            self.dub_tts_volume
         ));
 
         let request = json!({
@@ -520,13 +645,16 @@ impl App {
             "folder": folder,
             "output": output,
             "voice": self.dub_voice,
-            "original_volume": self.dub_original_volume,
+            "tts_provider": self.dub_provider,
+            "original_volume": original_volume,
             "tts_volume": self.dub_tts_volume,
             "rate": self.dub_rate,
             "use_sidecar": self.dub_use_sidecar,
             "overwrite": self.dub_overwrite,
             "ocr_only": self.dub_ocr_only,
             "ocr_mode": self.dub_ocr_mode,
+            "soft_timing": self.dub_soft_timing,
+            "natural_voice": self.dub_natural_voice,
         });
         if let Err(error) = self.spawn_bridge(ctx, request) {
             self.busy = Busy::Idle;
@@ -1364,13 +1492,10 @@ impl App {
                     .strong()
                     .color(TEXT_MAIN),
             );
-            ui.label(
-                egui::RichText::new(
-                    "OCR phụ đề tiếng Việt có sẵn trong video → tạo giọng đọc → trộn với âm thanh gốc.",
-                )
-                .color(TEXT_FADE),
+            ui.small(
+                "OCR phụ đề Việt có sẵn → tạo giọng đọc → trộn với âm thanh gốc. \
+                 Chỉ dùng cho video bạn có quyền xử lý.",
             );
-            ui.small("Chỉ dùng cho video bạn sở hữu hoặc có quyền xử lý.");
 
             ui.add_space(4.0);
             ui.horizontal(|ui| {
@@ -1436,14 +1561,39 @@ impl App {
                     .color(TEXT_MAIN),
             );
             ui.horizontal(|ui| {
+                ui.label("Nguồn giọng:");
+                let provider_before = self.dub_provider.clone();
+                egui::ComboBox::from_id_salt("dub_provider")
+                    .width(200.0)
+                    .selected_text(tts_provider_label(&self.dub_provider))
+                    .show_ui(ui, |ui| {
+                        combo_popup_style(ui);
+                        for (id, name) in TTS_PROVIDERS {
+                            ui.selectable_value(&mut self.dub_provider, (*id).to_owned(), *name);
+                        }
+                    });
+                if self.dub_provider != provider_before {
+                    self.dub_voice = if self.dub_provider == "vieneu" {
+                        VIENEU_VOICES[0].to_owned()
+                    } else {
+                        DUB_VOICES[0].0.to_owned()
+                    };
+                }
+                ui.separator();
                 ui.label("Giọng:");
                 egui::ComboBox::from_id_salt("dub_voice")
                     .width(180.0)
-                    .selected_text(dub_voice_label(&self.dub_voice))
+                    .selected_text(dub_voice_display(&self.dub_provider, &self.dub_voice))
                     .show_ui(ui, |ui| {
                         combo_popup_style(ui);
-                        for (id, name) in DUB_VOICES {
-                            ui.selectable_value(&mut self.dub_voice, (*id).to_owned(), *name);
+                        if self.dub_provider == "vieneu" {
+                            for id in VIENEU_VOICES {
+                                ui.selectable_value(&mut self.dub_voice, (*id).to_owned(), *id);
+                            }
+                        } else {
+                            for (id, name) in DUB_VOICES {
+                                ui.selectable_value(&mut self.dub_voice, (*id).to_owned(), *name);
+                            }
                         }
                     });
                 ui.separator();
@@ -1470,9 +1620,14 @@ impl App {
                     });
             });
             ui.horizontal(|ui| {
-                ui.add(
+                ui.checkbox(
+                    &mut self.dub_original_enabled,
+                    egui::RichText::new("Phát âm thanh gốc của video").color(TEXT_MAIN),
+                );
+                ui.add_enabled(
+                    self.dub_original_enabled,
                     egui::Slider::new(&mut self.dub_original_volume, 0..=100)
-                        .text("Âm thanh gốc (%)"),
+                        .text("Âm gốc (%)"),
                 );
                 ui.add(
                     egui::Slider::new(&mut self.dub_tts_volume, 0..=200)
@@ -1496,9 +1651,22 @@ impl App {
                     egui::RichText::new("Chỉ tạo SRT (không lồng tiếng)").color(TEXT_MAIN),
                 );
             });
+            ui.horizontal_wrapped(|ui| {
+                ui.checkbox(
+                    &mut self.dub_soft_timing,
+                    egui::RichText::new("Soft Timing (dời câu vào khoảng lặng)")
+                        .color(TEXT_MAIN),
+                )
+                .on_hover_text("Dời giọng đọc sớm tối đa 0,25 giây vào khoảng lặng giữa hai câu.");
+                ui.checkbox(
+                    &mut self.dub_natural_voice,
+                    egui::RichText::new("Voice tự nhiên (chồng nhẹ đuôi câu)").color(TEXT_MAIN),
+                )
+                .on_hover_text("Cho phép đuôi câu dài hơn phụ đề tối đa 15% để giọng tự nhiên hơn.");
+            });
             ui.small(
                 "File SRT được lưu trong thư mục _phude để bạn xem/sửa. Chạy lại với \"Ưu tiên SRT/VTT có sẵn\" \
-                 sẽ dùng bản đã sửa. HD 2 phút/video có thể mất 2–5 phút; 60 tập có thể mất vài giờ.",
+                 sẽ dùng bản đã sửa. Các thiết lập và mức âm lượng được tự lưu khi thoát app.",
             );
         });
 
@@ -1728,7 +1896,7 @@ impl eframe::App for App {
                 ui.heading(egui::RichText::new("DramaAI").color(BRAND_PINK));
                 ui.heading("Tiktok Downloader");
                 ui.label(
-                    egui::RichText::new("Rust GUI • Python core • v1.1.7")
+                    egui::RichText::new("Rust GUI • Python core • v1.1.8")
                         .small()
                         .weak(),
                 );
@@ -2115,6 +2283,22 @@ fn dub_voice_label(id: &str) -> &'static str {
         .unwrap_or("Giọng mặc định")
 }
 
+fn tts_provider_label(id: &str) -> &'static str {
+    TTS_PROVIDERS
+        .iter()
+        .find(|(provider_id, _)| *provider_id == id)
+        .map(|(_, name)| *name)
+        .unwrap_or("Edge TTS")
+}
+
+fn dub_voice_display<'a>(provider: &str, voice: &'a str) -> &'a str {
+    if provider == "vieneu" {
+        voice
+    } else {
+        dub_voice_label(voice)
+    }
+}
+
 fn count_videos(folder: &str) -> usize {
     const EXTENSIONS: &[&str] = &["mp4", "mkv", "mov", "avi", "webm", "m4v"];
     let Ok(entries) = std::fs::read_dir(folder) else {
@@ -2298,6 +2482,49 @@ mod tests {
         assert_eq!(super::count_videos(folder.to_str().expect("utf-8 path")), 2);
         let _ = std::fs::remove_dir_all(&folder);
     }
+
+    #[test]
+    fn settings_roundtrip_keeps_dubbing_values() {
+        let old = r#"{"output_dir":"C:\\Phim AI","concurrency":2,"save_vtt":true,"platform":"dramabox","last_url":"dramabox:1"}"#;
+        let mut settings: super::Settings = serde_json::from_str(old).expect("old settings");
+        assert_eq!(settings.dub_provider, "edge");
+        assert_eq!(settings.dub_voice, super::DUB_VOICES[0].0);
+        assert!(settings.dub_original_enabled);
+        assert_eq!(settings.dub_original_volume, 15);
+        assert_eq!(settings.dub_tts_volume, 100);
+
+        settings.catalog_platform = "shortmax".to_owned();
+        settings.dub_folder = "C:\\Phim AI\\Phim".to_owned();
+        settings.dub_output = "C:\\Phim AI\\LongTieng".to_owned();
+        settings.dub_provider = "vieneu".to_owned();
+        settings.dub_voice = "Hải Đăng".to_owned();
+        settings.dub_original_enabled = false;
+        settings.dub_original_volume = 50;
+        settings.dub_tts_volume = 140;
+        settings.dub_rate = -5;
+        settings.dub_use_sidecar = false;
+        settings.dub_overwrite = true;
+        settings.dub_ocr_only = true;
+        settings.dub_ocr_mode = "fast".to_owned();
+        settings.dub_soft_timing = true;
+        settings.dub_natural_voice = false;
+
+        let text = serde_json::to_string(&settings).expect("serialize settings");
+        let roundtrip: super::Settings = serde_json::from_str(&text).expect("deserialize");
+        assert_eq!(roundtrip.catalog_platform, "shortmax");
+        assert_eq!(roundtrip.dub_provider, "vieneu");
+        assert_eq!(roundtrip.dub_voice, "Hải Đăng");
+        assert!(!roundtrip.dub_original_enabled);
+        assert_eq!(roundtrip.dub_original_volume, 50);
+        assert_eq!(roundtrip.dub_tts_volume, 140);
+        assert_eq!(roundtrip.dub_rate, -5);
+        assert!(!roundtrip.dub_use_sidecar);
+        assert!(roundtrip.dub_overwrite);
+        assert!(roundtrip.dub_ocr_only);
+        assert_eq!(roundtrip.dub_ocr_mode, "fast");
+        assert!(roundtrip.dub_soft_timing);
+        assert!(!roundtrip.dub_natural_voice);
+    }
 }
 
 fn main() -> eframe::Result {
@@ -2310,7 +2537,7 @@ fn main() -> eframe::Result {
         .with_inner_size([960.0, 680.0])
         .with_min_inner_size([820.0, 560.0])
         .with_resizable(true)
-        .with_title("DramaAI Tiktok Downloader v1.1.7");
+        .with_title("DramaAI Tiktok Downloader v1.1.8");
     if let Some(icon) = load_window_icon() {
         viewport = viewport.with_icon(std::sync::Arc::new(icon));
     }
@@ -2322,7 +2549,7 @@ fn main() -> eframe::Result {
     };
 
     eframe::run_native(
-        "DramaAI Tiktok Downloader v1.1.7",
+        "DramaAI Tiktok Downloader v1.1.8",
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )

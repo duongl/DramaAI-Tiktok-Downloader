@@ -8,7 +8,8 @@ Pipeline for each video:
 2. Detect text lines with RapidOCR; read Vietnamese accents with VietOCR
    (fast mode uses RapidOCR's Latin model instead).
 3. Build a .srt (saved for review/reuse).
-4. Synthesize Vietnamese speech with edge-tts.
+4. Synthesize Vietnamese speech with edge-tts (online) or VieNeu-TTS
+   (optional local 48 kHz engine with 25 preset voices).
 5. Mix the TTS track with the original audio using ffmpeg.
 
 Only use this on content you own or have permission to process.
@@ -43,10 +44,45 @@ VI_VOICES = {
     "vi-VN-NamMinhNeural": "Nam — Nam Minh",
 }
 
+TTS_PROVIDERS = {
+    "edge": "Edge TTS (online)",
+    "vieneu": "VieNeu-TTS (local, 48kHz)",
+}
+
+# 25 preset voices của VieNeu-TTS v3 Turbo (Apache-2.0).
+VIENEU_VOICES = [
+    "Adam bựa",
+    "Trúc Ly",
+    "Thiện Minh",
+    "Mai Anh",
+    "Hải Đăng",
+    "Thùy Dung",
+    "Thiền Tâm Đức",
+    "Ngọc Huyền",
+    "Quang Sơn",
+    "Ngọc Trân",
+    "Minh Đức",
+    "Phạm Tuyên",
+    "Thái Sơn",
+    "Xuân Vĩnh",
+    "Thanh Bình",
+    "Ngọc Linh",
+    "Đoan Trang",
+    "Thục Đoan",
+    "Minh Triết",
+    "Mỹ Duyên",
+    "Quỳnh Anh",
+    "Đức Trí",
+    "Kim Thanh",
+    "Adam",
+    "Quốc Tuấn",
+]
+
 _EASY_READER = None
 _RAPID_ENGINE = None
 _RAPID_ENGINE_LATIN = None
 _VIETOCR_PREDICTOR = None
+_VIENEU_ENGINE = None
 _BASE_WORDS: Optional[dict[str, str]] = None
 
 
@@ -175,6 +211,19 @@ def _get_easy_reader():
 
         _EASY_READER = easyocr.Reader(["vi"], gpu=False, verbose=False)
     return _EASY_READER
+
+
+def _get_vieneu_engine():
+    global _VIENEU_ENGINE
+    if _VIENEU_ENGINE is None:
+        try:
+            from vieneu import Vieneu
+        except Exception as exc:
+            raise RuntimeError(
+                "VieNeu-TTS chưa cài. Chạy: pip install vieneu"
+            ) from exc
+        _VIENEU_ENGINE = Vieneu()
+    return _VIENEU_ENGINE
 
 
 def _ensure_latin_models() -> tuple[Path, Path]:
@@ -578,11 +627,43 @@ def _clean_speech_text(text: str) -> str:
     return text.strip(" .,;:-")
 
 
-async def _tts_save(text: str, voice: str, rate: int, path: Path) -> None:
+async def _tts_save(
+    text: str, voice: str, rate: int, path: Path, provider: str = "edge"
+) -> None:
+    if provider == "vieneu":
+        engine = _get_vieneu_engine()
+        audio = engine.infer(text, voice=voice)
+        engine.save(audio, str(path))
+        _apply_tempo(path, rate)
+        return
+
     import edge_tts
 
     communicate = edge_tts.Communicate(text, voice, rate=f"{rate:+d}%")
     await communicate.save(str(path))
+
+
+def _apply_tempo(path: Path, rate: int) -> None:
+    """Apply a speed change to a generated WAV using ffmpeg atempo."""
+    if rate == 0:
+        return
+    tempo = max(0.5, min(2.0, 1.0 + rate / 100.0))
+    temp = path.with_name(f"{path.stem}_tempo{path.suffix}")
+    subprocess.run(
+        [
+            _which("ffmpeg"),
+            "-v",
+            "error",
+            "-y",
+            "-i",
+            str(path),
+            "-filter:a",
+            f"atempo={tempo:.4f}",
+            str(temp),
+        ],
+        check=True,
+    )
+    temp.replace(path)
 
 
 def _duration_seconds(path: Path) -> float:
@@ -598,42 +679,75 @@ def _tts_track(
     rate: int,
     cache_dir: Path,
     progress: Optional[Callable[[float, str], None]] = None,
+    provider: str = "edge",
+    soft_timing: bool = False,
+    natural_voice: bool = True,
 ) -> Optional[Path]:
     from pydub import AudioSegment
 
     cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_ext = ".wav" if provider == "vieneu" else ".mp3"
     track = AudioSegment.silent(duration=int(video_duration * 1000), frame_rate=44100)
     used = 0
+    previous_cue_end = 0.0
     for index, (start, end, text) in enumerate(cues):
         speech = _clean_speech_text(text)
         if len(speech) < 2:
+            previous_cue_end = end
             continue
         cue_duration = max(0.3, end - start)
-        key = hashlib.sha1(f"{voice}|{rate}|{speech}".encode("utf-8")).hexdigest()
-        cache = cache_dir / f"{key}.mp3"
+        key = hashlib.sha1(
+            f"{provider}|{voice}|{rate}|{speech}".encode("utf-8")
+        ).hexdigest()
+        cache = cache_dir / f"{key}{cache_ext}"
         if not cache.is_file():
             try:
-                asyncio.run(_tts_save(speech, voice, rate, cache))
+                asyncio.run(_tts_save(speech, voice, rate, cache, provider))
             except Exception:
+                previous_cue_end = end
                 continue
         try:
             segment = AudioSegment.from_file(cache)
+            allowed = cue_duration * (1.15 if natural_voice else 1.02)
             if len(segment) / 1000.0 > cue_duration * 1.02:
-                faster = max(-30, min(60, rate + int((len(segment) / 1000.0 / cue_duration - 1) * 100) + 5))
+                faster = max(
+                    -30,
+                    min(
+                        60,
+                        rate
+                        + int((len(segment) / 1000.0 / cue_duration - 1) * 100)
+                        + 5,
+                    ),
+                )
                 if faster != rate:
-                    key2 = hashlib.sha1(f"{voice}|{faster}|{speech}".encode("utf-8")).hexdigest()
-                    cache2 = cache_dir / f"{key2}.mp3"
+                    key2 = hashlib.sha1(
+                        f"{provider}|{voice}|{faster}|{speech}".encode("utf-8")
+                    ).hexdigest()
+                    cache2 = cache_dir / f"{key2}{cache_ext}"
                     if not cache2.is_file():
-                        asyncio.run(_tts_save(speech, voice, faster, cache2))
+                        asyncio.run(
+                            _tts_save(speech, voice, faster, cache2, provider)
+                        )
                     segment = AudioSegment.from_file(cache2)
-                if len(segment) / 1000.0 > cue_duration * 1.02:
-                    segment = segment[: int(cue_duration * 1000)]
-            track = track.overlay(segment, position=int(start * 1000))
+                if len(segment) / 1000.0 > allowed:
+                    segment = segment[: int(allowed * 1000)]
+
+            position = start
+            if soft_timing and index > 0:
+                gap = max(0.0, start - previous_cue_end)
+                shift = min(0.25, gap / 2.0)
+                position = max(0.0, start - shift)
+            track = track.overlay(segment, position=int(position * 1000))
             used += 1
         except Exception:
+            previous_cue_end = end
             continue
+        previous_cue_end = end
         if progress:
-            progress((index + 1) / max(1, len(cues)) * 100.0, f"TTS {index + 1}/{len(cues)}")
+            progress(
+                (index + 1) / max(1, len(cues)) * 100.0,
+                f"TTS {index + 1}/{len(cues)}",
+            )
 
     if used == 0:
         return None
@@ -694,6 +808,9 @@ def dub_video(
     cache_dir: Path,
     overwrite: bool,
     progress: Optional[Callable[[float, str], None]] = None,
+    tts_provider: str = "edge",
+    soft_timing: bool = False,
+    natural_voice: bool = True,
 ) -> None:
     if output.exists() and not overwrite:
         return
@@ -705,6 +822,9 @@ def dub_video(
         rate,
         cache_dir,
         progress=lambda p, m: progress(p * 0.8, m) if progress else None,
+        provider=tts_provider,
+        soft_timing=soft_timing,
+        natural_voice=natural_voice,
     )
     if track is None:
         raise RuntimeError("Không tạo được audio TTS.")
@@ -734,6 +854,9 @@ def run_batch(
     overwrite: bool,
     emit: Callable[..., None],
     ocr_mode: str = "quality",
+    tts_provider: str = "edge",
+    soft_timing: bool = False,
+    natural_voice: bool = True,
 ) -> None:
     videos = list_videos(folder)
     if not videos:
@@ -746,6 +869,19 @@ def run_batch(
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     emit("dub_start", total=len(videos), folder=str(Path(folder)), output_dir=str(output_root))
+    if tts_provider == "vieneu":
+        emit(
+            "dub_progress",
+            index=1,
+            name="",
+            stage="tts",
+            percent=0.0,
+            message="Đang khởi tạo VieNeu-TTS (lần đầu có thể tải model)...",
+        )
+        try:
+            _get_vieneu_engine()
+        except Exception as exc:
+            raise RuntimeError(f"VieNeu-TTS chưa sẵn sàng: {exc}") from exc
     done = 0
     failed = 0
     started = time.time()
@@ -802,6 +938,9 @@ def run_batch(
                 cache_dir,
                 overwrite,
                 progress=report,
+                tts_provider=tts_provider,
+                soft_timing=soft_timing,
+                natural_voice=natural_voice,
             )
             emit("dub_video_done", index=index, name=video.name, output=str(output_video), skipped=False)
             done += 1

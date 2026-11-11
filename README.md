@@ -46,7 +46,8 @@ Dự án được tối ưu hóa cho Python, tích hợp sẵn các thuật toá
 - 📁 **Tự động phân thư mục theo series:** Mỗi phim được lưu vào thư mục con đúng tên series (ví dụ `Download Phim AI/Yêu Đương Chẳng Bằng Đi Ăn Lẩu/EP01 - ...mp4`), không lẫn với phim khác.
 - 🎯 **Tự động bóc tách & chuyển đổi phụ đề:** Tự động tải phụ đề đi kèm tập phim và chuyển đổi chuẩn hóa WebVTT sang SubRip (.srt) tương thích mọi thiết bị.
 - 💻 **Giao diện dòng lệnh (CLI) trực quan:** Xem trước danh sách tập, phân loại tập khóa/mở khóa (`[FREE] [HAS STREAM]`), tải theo dải tập (ví dụ: `1-10,15,20`).
-- 🎙️ **Lồng tiếng hàng loạt:** OCR phụ đề Việt có sẵn trong video, tạo giọng đọc bằng edge-tts và trộn với âm thanh gốc thành MP4 + file SRT.
+- 🎙️ **Lồng tiếng hàng loạt:** OCR phụ đề Việt có sẵn trong video, tạo giọng đọc bằng Edge TTS hoặc VieNeu-TTS local (25 giọng, 48 kHz) và trộn với âm thanh gốc thành MP4 + file SRT.
+- 💾 **Tự lưu toàn bộ thiết lập:** thư mục tải, nền tảng, nguồn giọng, giọng đọc, mức âm gốc/âm lồng, tốc độ đọc và các checkbox được khôi phục khi mở lại app.
 - 📦 **Kiến trúc Module hóa:** Dễ dàng tích hợp vào bot Telegram, FastAPI web service, hoặc crawler tự động.
 
 ---
@@ -228,7 +229,7 @@ Xem chi tiết tại [`gui/README.md`](gui/README.md).
 Tab **Lồng tiếng** nhận vào **một thư mục phim** (ví dụ `...\Yêu Đương Chẳng Bằng Đi Ăn Lẩu`) và xử lý mọi video bên trong:
 
 1. Đọc phụ đề tiếng Việt đã chèn cứng (hardsub) trong video bằng OCR.
-2. Tạo giọng đọc tiếng Việt bằng `edge-tts`.
+2. Tạo giọng đọc tiếng Việt bằng **Edge TTS** (online) hoặc **VieNeu-TTS** (local, 48 kHz).
 3. Trộn giọng đọc với âm thanh gốc (có thể giảm âm gốc về 0–100%).
 4. Xuất MP4 đã lồng tiếng + file `.srt` để kiểm tra/chỉnh sửa.
 
@@ -251,15 +252,41 @@ Tuỳ chọn — EasyOCR làm fallback nếu VietOCR lỗi:
 pip install -e ".[dubbing-easyocr]"
 ```
 
+Tuỳ chọn — **VieNeu-TTS local** với 25 giọng tiếng Việt, 48 kHz, không cần mạng:
+
+```bash
+pip install -e ".[dubbing-vieneu]"
+```
+
+VieNeu-TTS yêu cầu Python 3.10+; model được tải về lần đầu sử dụng. Đây là model mã nguồn mở Apache-2.0.
+
 Lần đầu chạy chế độ **Chất lượng**, VietOCR sẽ tải model `vgg_transformer` (~100 MB) về `%TEMP%`.
+
+### Nguồn giọng đọc
+
+| Nguồn | Số giọng | Ghi chú |
+| :--- | :---: | :--- |
+| **Edge TTS** | 2 giọng Việt | Online, nhẹ, không cần model |
+| **VieNeu-TTS** | 25 giọng preset | Local 48 kHz, hỗ trợ clone giọng, cần `vieneu` |
+
+> DramaAI **không** tích hợp `device.json`/`fix_shark` hay cơ chế vượt giới hạn thiết bị của CapCut. Các file đó gắn với tài khoản/thiết bị và không được phép phân phối công khai. Dùng Edge TTS hoặc VieNeu-TTS (mã nguồn mở) để có giọng đọc hợp lệ.
+
+### Đồng bộ mềm
+
+- **Soft Timing:** dời giọng đọc sớm tối đa 0,25 giây vào khoảng lặng giữa hai câu, giúp câu thoại không bị gấp.
+- **Voice tự nhiên:** cho phép đuôi câu dài hơn phụ đề tối đa 15% để giọng đọc tự nhiên hơn, thay vì cắt ngang.
+
+Cả hai tuỳ chọn được lưu cùng các thiết lập khác khi thoát app.
 
 ### Quy trình trên GUI
 
 1. Mở tab **Lồng tiếng**.
 2. Chọn **Thư mục video** → GUI báo số video tìm thấy.
 3. Chọn **Thư mục xuất** (mặc định `<thư mục video>/LongTieng`).
-4. Chọn giọng **Nữ — Hoài My** hoặc **Nam — Nam Minh**, chỉnh âm gốc/âm lồng/tốc độ đọc.
+4. Chọn **Nguồn giọng** (Edge TTS / VieNeu-TTS), chọn giọng, chỉnh âm gốc/âm lồng/tốc độ đọc.
 5. Bấm **Bắt đầu lồng tiếng**. Có thể **Hủy** giữa chừng.
+
+Toàn bộ thiết lập của tab Lồng tiếng — thư mục, nguồn giọng, giọng đọc, mức âm gốc/âm lồng, tốc độ, OCR mode và các checkbox — được tự lưu khi thoát app và khôi phục ở lần mở sau.
 
 ### Chế độ OCR
 

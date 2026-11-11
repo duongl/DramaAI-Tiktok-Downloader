@@ -214,6 +214,11 @@ def cmd_dub(req):
     ocr_only = bool(req.get("ocr_only", False))
     overwrite = bool(req.get("overwrite", False))
     ocr_mode = req.get("ocr_mode") or "quality"
+    tts_provider = (req.get("tts_provider") or "edge").strip().lower()
+    if tts_provider not in ("edge", "vieneu"):
+        raise ValueError(f"TTS provider không hợp lệ: {tts_provider}")
+    soft_timing = bool(req.get("soft_timing", False))
+    natural_voice = bool(req.get("natural_voice", True))
 
     dubbing.run_batch(
         folder=folder,
@@ -227,6 +232,9 @@ def cmd_dub(req):
         overwrite=overwrite,
         emit=emit,
         ocr_mode=ocr_mode,
+        tts_provider=tts_provider,
+        soft_timing=soft_timing,
+        natural_voice=natural_voice,
     )
     return 0
 
