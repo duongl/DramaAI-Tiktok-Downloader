@@ -104,6 +104,16 @@ def list_videos(folder: str | Path) -> list[Path]:
     )
 
 
+def default_output_dir(folder: str | Path) -> Path:
+    """Default dubbed output folder: sibling named '<folder> Lồng Tiếng'."""
+    source = Path(folder)
+    name = source.name.strip() or "video"
+    parent = source.parent
+    if str(parent) in ("", "."):
+        parent = source
+    return parent / f"{name} Lồng Tiếng"
+
+
 def _strip_accents(text: str) -> str:
     text = text.replace("đ", "d").replace("Đ", "D")
     text = unicodedata.normalize("NFD", text)
@@ -857,6 +867,7 @@ def run_batch(
     tts_provider: str = "edge",
     soft_timing: bool = False,
     natural_voice: bool = True,
+    keep_temp: bool = False,
 ) -> None:
     videos = list_videos(folder)
     if not videos:
@@ -947,6 +958,14 @@ def run_batch(
         except Exception as exc:
             failed += 1
             emit("dub_video_error", index=index, name=video.name, message=str(exc))
+
+    if not keep_temp and not ocr_only and done > 0:
+        shutil.rmtree(srt_dir, ignore_errors=True)
+        shutil.rmtree(cache_dir, ignore_errors=True)
+        emit(
+            "log",
+            message="Đã xóa file tạm _phude và _tts_cache; chỉ giữ video lồng tiếng.",
+        )
 
     emit(
         "dub_finished",

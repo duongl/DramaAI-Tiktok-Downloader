@@ -177,6 +177,7 @@ struct Settings {
     dub_ocr_mode: String,
     dub_soft_timing: bool,
     dub_natural_voice: bool,
+    dub_keep_temp: bool,
 }
 
 impl Default for Settings {
@@ -202,6 +203,7 @@ impl Default for Settings {
             dub_ocr_mode: "quality".to_owned(),
             dub_soft_timing: false,
             dub_natural_voice: true,
+            dub_keep_temp: false,
         }
     }
 }
@@ -286,6 +288,7 @@ struct App {
     dub_ocr_mode: String,
     dub_soft_timing: bool,
     dub_natural_voice: bool,
+    dub_keep_temp: bool,
     dub_video_count: usize,
     dub_total: usize,
     dub_done: usize,
@@ -417,6 +420,7 @@ impl App {
             dub_ocr_mode,
             dub_soft_timing: settings.dub_soft_timing,
             dub_natural_voice: settings.dub_natural_voice,
+            dub_keep_temp: settings.dub_keep_temp,
             dub_video_count,
             dub_total: 0,
             dub_done: 0,
@@ -462,6 +466,7 @@ impl App {
             dub_ocr_mode: self.dub_ocr_mode.clone(),
             dub_soft_timing: self.dub_soft_timing,
             dub_natural_voice: self.dub_natural_voice,
+            dub_keep_temp: self.dub_keep_temp,
         });
     }
 
@@ -607,14 +612,7 @@ impl App {
             self.error = Some("Không tìm thấy video trong thư mục.".to_owned());
             return;
         }
-        let output = if self.dub_output.trim().is_empty() {
-            std::path::Path::new(&folder)
-                .join("LongTieng")
-                .display()
-                .to_string()
-        } else {
-            self.dub_output.trim().to_owned()
-        };
+        let output = self.dub_output.trim().to_owned();
         let original_volume = if self.dub_original_enabled {
             self.dub_original_volume
         } else {
@@ -655,6 +653,7 @@ impl App {
             "ocr_mode": self.dub_ocr_mode,
             "soft_timing": self.dub_soft_timing,
             "natural_voice": self.dub_natural_voice,
+            "keep_temp": self.dub_keep_temp,
         });
         if let Err(error) = self.spawn_bridge(ctx, request) {
             self.busy = Busy::Idle;
@@ -1527,7 +1526,7 @@ impl App {
                     egui::TextEdit::singleline(&mut self.dub_output)
                         .desired_width(width)
                         .hint_text(
-                            egui::RichText::new("Mặc định: <thư mục video>/LongTieng")
+                            egui::RichText::new("Mặc định: <thư mục cha>/<tên thư mục> Lồng Tiếng")
                                 .color(TEXT_FADE),
                         )
                         .text_color(TEXT_MAIN),
@@ -1663,10 +1662,19 @@ impl App {
                     egui::RichText::new("Voice tự nhiên (chồng nhẹ đuôi câu)").color(TEXT_MAIN),
                 )
                 .on_hover_text("Cho phép đuôi câu dài hơn phụ đề tối đa 15% để giọng tự nhiên hơn.");
+                ui.checkbox(
+                    &mut self.dub_keep_temp,
+                    egui::RichText::new("Giữ file tạm (SRT + cache TTS)").color(TEXT_MAIN),
+                )
+                .on_hover_text(
+                    "Mặc định app tự xóa _phude và _tts_cache sau khi xong, chỉ giữ video lồng tiếng. \
+                     Bật tuỳ chọn này nếu muốn giữ SRT để sửa rồi chạy lại.",
+                );
             });
             ui.small(
-                "File SRT được lưu trong thư mục _phude để bạn xem/sửa. Chạy lại với \"Ưu tiên SRT/VTT có sẵn\" \
-                 sẽ dùng bản đã sửa. Các thiết lập và mức âm lượng được tự lưu khi thoát app.",
+                "Video lồng tiếng được lưu trong thư mục \"<tên thư mục> Lồng Tiếng\". Mặc định app tự xóa \
+                 _phude và _tts_cache sau khi xong; bật \"Giữ file tạm\" nếu muốn sửa SRT rồi chạy lại. \
+                 Các thiết lập và mức âm lượng được tự lưu khi thoát app.",
             );
         });
 
@@ -1749,7 +1757,7 @@ impl App {
                 self.dub_folder = dir.display().to_string();
                 self.dub_video_count = count_videos(&self.dub_folder);
                 if self.dub_output.trim().is_empty() {
-                    self.dub_output = dir.join("LongTieng").display().to_string();
+                    self.dub_output = default_dub_output(&dir).display().to_string();
                 }
             }
         }
@@ -1766,8 +1774,7 @@ impl App {
                 if self.dub_folder.trim().is_empty() {
                     self.output_dir.clone()
                 } else {
-                    std::path::Path::new(self.dub_folder.trim())
-                        .join("LongTieng")
+                    default_dub_output(std::path::Path::new(self.dub_folder.trim()))
                         .display()
                         .to_string()
                 }
@@ -1896,7 +1903,7 @@ impl eframe::App for App {
                 ui.heading(egui::RichText::new("DramaAI").color(BRAND_PINK));
                 ui.heading("Tiktok Downloader");
                 ui.label(
-                    egui::RichText::new("Rust GUI • Python core • v1.1.8")
+                    egui::RichText::new("Rust GUI • Python core • v1.1.9")
                         .small()
                         .weak(),
                 );
@@ -2299,6 +2306,18 @@ fn dub_voice_display<'a>(provider: &str, voice: &'a str) -> &'a str {
     }
 }
 
+fn default_dub_output(folder: &std::path::Path) -> PathBuf {
+    let name = folder
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("video");
+    let parent = folder
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(folder);
+    parent.join(format!("{name} Lồng Tiếng"))
+}
+
 fn count_videos(folder: &str) -> usize {
     const EXTENSIONS: &[&str] = &["mp4", "mkv", "mov", "avi", "webm", "m4v"];
     let Ok(entries) = std::fs::read_dir(folder) else {
@@ -2508,6 +2527,7 @@ mod tests {
         settings.dub_ocr_mode = "fast".to_owned();
         settings.dub_soft_timing = true;
         settings.dub_natural_voice = false;
+        settings.dub_keep_temp = true;
 
         let text = serde_json::to_string(&settings).expect("serialize settings");
         let roundtrip: super::Settings = serde_json::from_str(&text).expect("deserialize");
@@ -2524,6 +2544,7 @@ mod tests {
         assert_eq!(roundtrip.dub_ocr_mode, "fast");
         assert!(roundtrip.dub_soft_timing);
         assert!(!roundtrip.dub_natural_voice);
+        assert!(roundtrip.dub_keep_temp);
     }
 }
 
@@ -2537,7 +2558,7 @@ fn main() -> eframe::Result {
         .with_inner_size([960.0, 680.0])
         .with_min_inner_size([820.0, 560.0])
         .with_resizable(true)
-        .with_title("DramaAI Tiktok Downloader v1.1.8");
+        .with_title("DramaAI Tiktok Downloader v1.1.9");
     if let Some(icon) = load_window_icon() {
         viewport = viewport.with_icon(std::sync::Arc::new(icon));
     }
@@ -2549,7 +2570,7 @@ fn main() -> eframe::Result {
     };
 
     eframe::run_native(
-        "DramaAI Tiktok Downloader v1.1.8",
+        "DramaAI Tiktok Downloader v1.1.9",
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )

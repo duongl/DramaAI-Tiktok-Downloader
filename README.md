@@ -46,7 +46,7 @@ Dự án được tối ưu hóa cho Python, tích hợp sẵn các thuật toá
 - 📁 **Tự động phân thư mục theo series:** Mỗi phim được lưu vào thư mục con đúng tên series (ví dụ `Download Phim AI/Yêu Đương Chẳng Bằng Đi Ăn Lẩu/EP01 - ...mp4`), không lẫn với phim khác.
 - 🎯 **Tự động bóc tách & chuyển đổi phụ đề:** Tự động tải phụ đề đi kèm tập phim và chuyển đổi chuẩn hóa WebVTT sang SubRip (.srt) tương thích mọi thiết bị.
 - 💻 **Giao diện dòng lệnh (CLI) trực quan:** Xem trước danh sách tập, phân loại tập khóa/mở khóa (`[FREE] [HAS STREAM]`), tải theo dải tập (ví dụ: `1-10,15,20`).
-- 🎙️ **Lồng tiếng hàng loạt:** OCR phụ đề Việt có sẵn trong video, tạo giọng đọc bằng Edge TTS hoặc VieNeu-TTS local (25 giọng, 48 kHz) và trộn với âm thanh gốc thành MP4 + file SRT.
+- 🎙️ **Lồng tiếng hàng loạt:** OCR phụ đề Việt có sẵn trong video, tạo giọng đọc bằng Edge TTS hoặc VieNeu-TTS local (25 giọng, 48 kHz), trộn với âm thanh gốc và tự dọn file tạm — chỉ giữ thư mục `<tên phim> Lồng Tiếng`.
 - 💾 **Tự lưu toàn bộ thiết lập:** thư mục tải, nền tảng, nguồn giọng, giọng đọc, mức âm gốc/âm lồng, tốc độ đọc và các checkbox được khôi phục khi mở lại app.
 - 📦 **Kiến trúc Module hóa:** Dễ dàng tích hợp vào bot Telegram, FastAPI web service, hoặc crawler tự động.
 
@@ -282,11 +282,11 @@ Cả hai tuỳ chọn được lưu cùng các thiết lập khác khi thoát ap
 
 1. Mở tab **Lồng tiếng**.
 2. Chọn **Thư mục video** → GUI báo số video tìm thấy.
-3. Chọn **Thư mục xuất** (mặc định `<thư mục video>/LongTieng`).
+3. Chọn **Thư mục xuất** (mặc định `<thư mục cha>/<tên thư mục> Lồng Tiếng`, ví dụ `Download Phim AI/Yêu Đương Chẳng Bằng Đi Ăn Lẩu Lồng Tiếng`).
 4. Chọn **Nguồn giọng** (Edge TTS / VieNeu-TTS), chọn giọng, chỉnh âm gốc/âm lồng/tốc độ đọc.
-5. Bấm **Bắt đầu lồng tiếng**. Có thể **Hủy** giữa chừng.
+5. Bấm **Bắt đầu lồng tiếng**. Có thể **Hủy** giữa chừng. Sau khi xong, app tự xóa `_phude` và `_tts_cache`, chỉ giữ lại video lồng tiếng (bật **Giữ file tạm** nếu muốn giữ SRT để sửa).
 
-Toàn bộ thiết lập của tab Lồng tiếng — thư mục, nguồn giọng, giọng đọc, mức âm gốc/âm lồng, tốc độ, OCR mode và các checkbox — được tự lưu khi thoát app và khôi phục ở lần mở sau.
+Toàn bộ thiết lập của tab Lồng tiếng — thư mục, nguồn giọng, giọng đọc, mức âm gốc/âm lồng, tốc độ, OCR mode, Soft Timing, Voice tự nhiên, Giữ file tạm và các checkbox — được tự lưu khi thoát app và khôi phục ở lần mở sau.
 
 ### Chế độ OCR
 
@@ -301,17 +301,18 @@ Nếu nền tảng tải kèm phụ đề, hãy bật **Lưu file .vtt gốc** �
 
 ### Kết quả
 
-```
-LongTieng/
-├── EP01.mp4            # video đã lồng tiếng
-├── EP02.mp4
-├── _phude/
-│   ├── EP01.srt        # phụ đề OCR (xem/sửa được)
-│   └── EP02.srt
-└── _tts_cache/         # cache giọng đọc, có thể xoá
+Mặc định app chỉ giữ lại thư mục video lồng tiếng:
+
+```text
+Download Phim AI/
+├── Yêu Đương Chẳng Bằng Đi Ăn Lẩu/              # video gốc
+└── Yêu Đương Chẳng Bằng Đi Ăn Lẩu Lồng Tiếng/   # tự sinh ra
+    ├── EP01.mp4
+    ├── EP02.mp4
+    └── ...
 ```
 
-Muốn sửa câu chữ: mở file trong `_phude`, chỉnh lại, rồi chạy lại với **Ưu tiên SRT/VTT có sẵn** và **Ghi đè file đã có**. Chế độ **Chỉ tạo SRT** giúp tạo phụ đề trước mà chưa cần TTS.
+Nếu bật **Giữ file tạm (SRT + cache TTS)**, thư mục xuất sẽ có thêm `_phude/` (phụ đề OCR) và `_tts_cache/` (cache giọng đọc) để bạn sửa SRT rồi chạy lại với **Ưu tiên SRT/VTT có sẵn** và **Ghi đè file đã có**. Chế độ **Chỉ tạo SRT** luôn giữ `_phude` vì file SRT chính là kết quả.
 
 Thời gian tham khảo trên CPU: video 20 giây mất ~1,5 phút ở chế độ Chất lượng; video 2 phút có thể mất 2–5 phút. Cả bộ 60 tập nên chạy qua đêm.
 

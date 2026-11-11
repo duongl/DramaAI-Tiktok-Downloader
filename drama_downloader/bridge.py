@@ -205,7 +205,9 @@ def cmd_dub(req):
     if not folder or not Path(folder).is_dir():
         raise ValueError("Thư mục video không hợp lệ.")
 
-    output = (req.get("output") or "").strip() or str(Path(folder) / "LongTieng")
+    output = (req.get("output") or "").strip()
+    if not output:
+        output = str(dubbing.default_output_dir(folder))
     voice = (req.get("voice") or "vi-VN-HoaiMyNeural").strip()
     original_volume = max(0, min(100, int(req.get("original_volume") or 15)))
     tts_volume = max(0, min(200, int(req.get("tts_volume") or 100)))
@@ -219,6 +221,7 @@ def cmd_dub(req):
         raise ValueError(f"TTS provider không hợp lệ: {tts_provider}")
     soft_timing = bool(req.get("soft_timing", False))
     natural_voice = bool(req.get("natural_voice", True))
+    keep_temp = bool(req.get("keep_temp", False))
 
     dubbing.run_batch(
         folder=folder,
@@ -235,6 +238,7 @@ def cmd_dub(req):
         tts_provider=tts_provider,
         soft_timing=soft_timing,
         natural_voice=natural_voice,
+        keep_temp=keep_temp,
     )
     return 0
 

@@ -142,6 +142,11 @@ Hello World!
         self.assertIn("tts_provider", params)
         self.assertIn("soft_timing", params)
         self.assertIn("natural_voice", params)
+        self.assertIn("keep_temp", params)
+        self.assertEqual(
+            dubbing.default_output_dir(r"C:\Phim AI\Yêu Đương Chẳng Bằng Đi Ăn Lẩu"),
+            Path(r"C:\Phim AI\Yêu Đương Chẳng Bằng Đi Ăn Lẩu Lồng Tiếng"),
+        )
         print("[OK] TTS voice catalog test passed")
 
 

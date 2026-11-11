@@ -59,11 +59,11 @@ run_gui.bat
 - Hủy giữa chừng (file `.part` có thể còn lại).
 - Chọn thư mục tải bằng hộp thoại Windows, mở thư mục sau khi tải.
 - Tab **Danh mục** để duyệt phim (DramaBox và ShortMax).
-- Tab **Lồng tiếng**: chọn cả thư mục phim, OCR phụ đề Việt có sẵn, tạo TTS bằng Edge TTS hoặc VieNeu-TTS local (25 giọng, 48 kHz), Soft Timing và Voice tự nhiên, rồi trộn với âm thanh gốc.
+- Tab **Lồng tiếng**: chọn cả thư mục phim, OCR phụ đề Việt có sẵn, tạo TTS bằng Edge TTS hoặc VieNeu-TTS local (25 giọng, 48 kHz), Soft Timing và Voice tự nhiên, rồi trộn với âm thanh gốc. Kết quả nằm trong thư mục `<tên phim> Lồng Tiếng`; mặc định tự xóa `_phude` và `_tts_cache` sau khi xong.
 - Tab **Donate** với mã VietQR, thông tin Vietcombank và nút sao chép nhanh.
 - Tab **Nhật ký** ghi lại từng bước và lỗi.
 - Giao diện tông hồng–cam lấy cảm hứng từ DramaBox, cửa sổ tự căn giữa khi mở.
-- Tự động lưu **toàn bộ thiết lập** — thư mục tải, số luồng, VTT, nền tảng, URL, thư mục lồng tiếng, nguồn giọng, giọng đọc, mức âm gốc/âm lồng, tốc độ đọc, OCR mode, Soft Timing, Voice tự nhiên và checkbox — vào:
+- Tự động lưu **toàn bộ thiết lập** — thư mục tải, số luồng, VTT, nền tảng, URL, thư mục lồng tiếng, nguồn giọng, giọng đọc, mức âm gốc/âm lồng, tốc độ đọc, OCR mode, Soft Timing, Voice tự nhiên, Giữ file tạm và checkbox — vào:
   `%APPDATA%\DramaAI Tiktok Downloader\settings.json`.
 - Không bundle `device.json`/`fix_shark` của CapCut; dùng Edge TTS hoặc VieNeu-TTS (mã nguồn mở) thay thế.
 - Icon riêng và shortcut Desktop (`create_shortcut.ps1`).
